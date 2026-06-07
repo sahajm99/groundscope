@@ -1,0 +1,31 @@
+# Render blueprint — single web service (API + same-origin static frontend).
+# Free tier sleeps on idle; keep-warm cron (see scripts/keepwarm.md) pings /health.
+services:
+  - type: web
+    name: groundscope
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_MODEL
+        value: llama-3.3-70b-versatile
+      - key: EMBED_PROVIDER
+        value: local
+      - key: EMBED_MODEL
+        value: BAAI/bge-small-en-v1.5
+      - key: VECTOR_DIM
+        value: "384"
+      - key: DATABASE_URL
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      - key: LANGFUSE_HOST
+        value: https://cloud.langfuse.com

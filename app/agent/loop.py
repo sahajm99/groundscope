@@ -40,13 +40,18 @@ def _ms(t0: float) -> int:
 
 
 async def run_agent(session_id: str, question: str) -> AsyncIterator[dict]:
+    from app.observability import start_trace
+
     step = 0
     collected: list[tools.Source] = []
+    obs = start_trace(question)
 
     def trace(**kw) -> dict:
         nonlocal step
         step += 1
-        return {"kind": "trace", "payload": TraceEvent(step=step, **kw).to_dict()}
+        ev = TraceEvent(step=step, **kw)
+        obs.event(ev)  # mirror every step to Langfuse
+        return {"kind": "trace", "payload": ev.to_dict()}
 
     # ── Node: route ───────────────────────────────────────────────
     t0 = time.monotonic()
@@ -65,6 +70,7 @@ async def run_agent(session_id: str, question: str) -> AsyncIterator[dict]:
         summary, _ = await asyncio.to_thread(tools.metadata_query, session_id)
         yield trace(type="tool_result", tool="metadata_query", summary=summary, ms=_ms(t0))
         answer = summary
+        obs.finish(answer)
         yield {"kind": "answer", "payload": {"answer": answer, "citations": []}}
         return
 
@@ -98,11 +104,10 @@ async def run_agent(session_id: str, question: str) -> AsyncIterator[dict]:
     # ── Node: synthesize | refuse ─────────────────────────────────
     if not collected:
         yield trace(type="refusal", summary="No groundable sources found.")
-        yield {"kind": "answer", "payload": {
-            "answer": "I can't ground an answer to that in your documents or the web. "
-                      "Try uploading a relevant document, or email sahajm99@gmail.com.",
-            "citations": [],
-        }}
+        refusal = ("I can't ground an answer to that in your documents or the web. "
+                   "Try uploading a relevant document, or email sahajm99@gmail.com.")
+        obs.finish(refusal)
+        yield {"kind": "answer", "payload": {"answer": refusal, "citations": []}}
         return
 
     t0 = time.monotonic()
@@ -114,5 +119,6 @@ async def run_agent(session_id: str, question: str) -> AsyncIterator[dict]:
         complete, _SYNTH_SYS, f"QUESTION:\n{question}\n\nSOURCES:\n{sources_block}"
     )
     yield trace(type="synthesis", summary="Synthesized a grounded answer.", ms=_ms(t0))
+    obs.finish(answer)
     citations = [{"label": s.label, "kind": s.kind, "detail": s.detail} for s in collected]
     yield {"kind": "answer", "payload": {"answer": answer, "citations": citations}}

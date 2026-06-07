@@ -16,6 +16,14 @@ from app.agent.loop import run_agent
 from app.config import settings
 from app import sessions
 
+
+def _engine():
+    if settings.agent_engine == "langgraph":
+        from app.agent.graph import run_agent_graph
+
+        return run_agent_graph
+    return run_agent
+
 router = APIRouter()
 
 
@@ -36,9 +44,11 @@ async def ask(request: Request, response: Response):
     if not isinstance(question, str) or not question.strip() or len(question) > 500:
         return Response("Ask a question (under 500 characters).", status_code=400)
 
+    agent = _engine()
+
     async def event_stream():
         try:
-            async for msg in run_agent(sid, question.strip()):
+            async for msg in agent(sid, question.strip()):
                 yield {"event": msg["kind"], "data": json.dumps(msg["payload"])}
         except Exception as e:  # noqa: BLE001
             yield {"event": "answer", "data": json.dumps(

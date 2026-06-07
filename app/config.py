@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     # Agent
     max_tool_rounds: int = 2
     relevance_distance_threshold: float = 0.35
+    agent_engine: str = "loop"  # "loop" (explicit, proven) | "langgraph" (StateGraph)
 
     @property
     def llm_configured(self) -> bool:
