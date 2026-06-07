@@ -12,8 +12,7 @@ python-dotenv==1.0.1
 # Agent + LLM
 langgraph==0.2.39
 langchain-core==0.3.13
-openai==1.51.2                   # OpenAI-compatible client (works with Groq base_url)
-langchain-openai==0.2.3          # available for the planned LangGraph StateGraph wrapper
+openai==1.54.4                   # OpenAI-compatible client (works with Groq base_url)
 langfuse==2.53.1                 # observability
 
 # Embeddings (local, no API key, open-source ONNX)
