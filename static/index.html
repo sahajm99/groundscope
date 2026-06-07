@@ -88,7 +88,7 @@ async function ask(q){
   if(!res.ok || !res.body){ add('agent', await res.text()); send.disabled=false; return; }
   const reader=res.body.getReader(), dec=new TextDecoder(); let buf='';
   while(true){ const {done,value}=await reader.read(); if(done) break;
-    buf+=dec.decode(value,{stream:true}); const blocks=buf.split('\n\n'); buf=blocks.pop();
+    buf=(buf+dec.decode(value,{stream:true})).replace(/\r/g,''); const blocks=buf.split('\n\n'); buf=blocks.pop();
     for(const b of blocks){
       let ev='message', data=''; for(const line of b.split('\n')){
         if(line.startsWith('event:')) ev=line.slice(6).trim();
