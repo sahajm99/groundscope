@@ -8,6 +8,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download the local embedding model so first request isn't slow/heavy.
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-small-en-v1.5')"
+
 COPY app ./app
 COPY static ./static
 COPY scripts ./scripts

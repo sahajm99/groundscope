@@ -7,25 +7,35 @@ services:
     plan: free
     healthCheckPath: /health
     envVars:
-      - key: LLM_API_KEY
+      # --- secrets (set these in the Render dashboard; never commit) ---
+      - key: LLM_API_KEY            # Groq
         sync: false
+      - key: DATABASE_URL           # Supabase session pooler (IPv4), port 5432
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: LANGSMITH_API_KEY      # optional (observability)
+        sync: false
+      # --- non-secret config ---
       - key: LLM_BASE_URL
         value: https://api.groq.com/openai/v1
       - key: LLM_MODEL
         value: llama-3.3-70b-versatile
+      - key: LLM_FALLBACK_MODEL
+        value: llama-3.1-8b-instant
       - key: EMBED_PROVIDER
         value: local
       - key: EMBED_MODEL
         value: BAAI/bge-small-en-v1.5
       - key: VECTOR_DIM
         value: "384"
-      - key: DATABASE_URL
-        sync: false
-      - key: TAVILY_API_KEY
-        sync: false
-      - key: LANGFUSE_PUBLIC_KEY
-        sync: false
-      - key: LANGFUSE_SECRET_KEY
-        sync: false
-      - key: LANGFUSE_HOST
-        value: https://cloud.langfuse.com
+      - key: AGENT_ENGINE
+        value: langgraph
+      - key: RELEVANCE_DISTANCE_THRESHOLD
+        value: "0.5"
+      - key: LANGSMITH_TRACING
+        value: "true"
+      - key: LANGSMITH_PROJECT
+        value: AGENTS
+      - key: LANGSMITH_ENDPOINT
+        value: https://api.smith.langchain.com
