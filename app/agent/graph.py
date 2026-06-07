@@ -55,7 +55,8 @@ def metadata_node(state: S) -> S:
 def vector_node(state: S) -> S:
     _emit(state, type="tool_call", tool="vector_search", input=state["question"][:200], summary="Searching your documents.")
     summary, sources, best = tools.vector_search(state["session_id"], state["question"])
-    _emit(state, type="tool_result", tool="vector_search", summary=summary, score=best)
+    _emit(state, type="tool_result", tool="vector_search", summary=summary, score=best,
+          preview=(sources[0].text[:220] + "…") if sources else None)
     return {"collected": list(sources), "best": best}
 
 

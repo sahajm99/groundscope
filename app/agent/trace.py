@@ -19,7 +19,8 @@ class TraceEvent:
     summary: str = ""           # human-readable result summary
     score: Optional[float] = None  # cosine distance for vector_search, else None
     ms: int = 0
-    links: Optional[list] = None   # [{title, url}] for web_search results
+    links: Optional[list] = None    # [{title, url}] for web_search results
+    preview: Optional[str] = None   # snippet of the top retrieved chunk (vector_search)
 
     def to_dict(self) -> dict:
         return asdict(self)

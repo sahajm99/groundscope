@@ -84,8 +84,8 @@ async def run_agent(session_id: str, question: str) -> AsyncIterator[dict]:
     yield trace(type="tool_call", tool="vector_search", input=question[:200], summary="Searching your documents.")
     summary, sources, best = await asyncio.to_thread(tools.vector_search, session_id, question)
     collected.extend(sources)
-    yield trace(type="tool_result", tool="vector_search", summary=summary,
-                score=best, ms=_ms(t0))
+    yield trace(type="tool_result", tool="vector_search", summary=summary, score=best, ms=_ms(t0),
+                preview=(sources[0].text[:220] + "…") if sources else None)
 
     # ── Node: reflect / relevance gate ────────────────────────────
     threshold = settings.relevance_distance_threshold

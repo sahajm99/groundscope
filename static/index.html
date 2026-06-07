@@ -45,6 +45,7 @@
   .step .links a { color:var(--blue); font-size:12px; text-decoration:none; }
   .step .links a:hover { text-decoration:underline; }
   .placeholder { color:var(--muted); font:13px ui-monospace,monospace; padding:8px 2px; }
+  .step .preview { margin-top:5px; padding:6px 8px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--muted); font-size:12px; font-style:italic; line-height:1.4; }
 </style>
 </head>
 <body>
@@ -87,6 +88,10 @@ function step(ev){
   const score = (ev.score!=null) ? ` <span class="score">d=${ev.score.toFixed(3)}</span>` : '';
   const ms = ev.ms ? `<span class="ms">${ev.ms}ms</span>` : '';
   d.innerHTML = `${ms}<span class="t">${ev.type}</span> ${tool}${score}<div>${ev.summary||''}</div>`;
+  if(ev.preview){
+    const pv=document.createElement('div'); pv.className='preview';
+    pv.textContent='“'+ev.preview+'”'; d.appendChild(pv);
+  }
   if(ev.links && ev.links.length){
     const u=document.createElement('div'); u.className='links';
     u.innerHTML=ev.links.map(l=>`<a href="${l.url}" target="_blank" rel="noopener">${l.title} ↗</a>`).join('');
