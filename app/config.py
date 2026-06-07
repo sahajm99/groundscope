@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     # Agent
     max_tool_rounds: int = 2
-    relevance_distance_threshold: float = 0.35
+    relevance_distance_threshold: float = 0.5  # calibrated for bge-small: relevant ~0.44, irrelevant ~0.61
     agent_engine: str = "loop"  # "loop" (explicit, proven) | "langgraph" (StateGraph)
 
     @property
