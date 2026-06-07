@@ -1,6 +1,10 @@
 """Application configuration via environment variables."""
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Populate os.environ from .env so SDKs that read it directly (LangSmith) work.
+load_dotenv()
 
 
 class Settings(BaseSettings):

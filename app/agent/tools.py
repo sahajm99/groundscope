@@ -12,6 +12,14 @@ from app.config import settings
 from app.ingestion.embedder import get_embedder
 from app import storage
 
+try:
+    from langsmith import traceable
+except ImportError:  # langsmith optional
+    def traceable(**_kwargs):
+        def deco(fn):
+            return fn
+        return deco
+
 
 @dataclass
 class Source:
@@ -21,6 +29,7 @@ class Source:
     text: str          # the snippet used for grounding
 
 
+@traceable(run_type="retriever", name="vector_search")
 def vector_search(session_id: str, query: str, limit: int = 6) -> tuple[str, list[Source], float | None]:
     """Semantic search over this session's docs + the global seeded corpus."""
     emb = get_embedder().embed([query])[0]
@@ -36,6 +45,7 @@ def vector_search(session_id: str, query: str, limit: int = 6) -> tuple[str, lis
     return (summary, sources, best)
 
 
+@traceable(run_type="tool", name="metadata_query")
 def metadata_query(session_id: str) -> tuple[str, list[Source]]:
     """Structured: which documents exist, page/chunk counts."""
     docs = storage.list_documents(session_id)
@@ -45,6 +55,7 @@ def metadata_query(session_id: str) -> tuple[str, list[Source]]:
     return ("Documents available — " + "; ".join(lines), [])
 
 
+@traceable(run_type="tool", name="web_search")
 def web_search(query: str, limit: int = 4) -> tuple[str, list[Source]]:
     """Internet grounding via Tavily. Returns snippets + URLs."""
     if not settings.web_search_configured:

@@ -4,6 +4,7 @@ breaks import/build."""
 from __future__ import annotations
 
 import json
+import os
 
 from app.config import settings
 
@@ -15,7 +16,16 @@ def _get_client():
     if _client is None:
         from openai import OpenAI
 
-        _client = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
+        client = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
+        # Auto-trace every LLM call to LangSmith (prompts, outputs, tokens, latency).
+        if os.getenv("LANGSMITH_TRACING", "").lower() == "true" and os.getenv("LANGSMITH_API_KEY"):
+            try:
+                from langsmith.wrappers import wrap_openai
+
+                client = wrap_openai(client)
+            except Exception:  # noqa: BLE001
+                pass
+        _client = client
     return _client
 
 
