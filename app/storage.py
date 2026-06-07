@@ -71,6 +71,12 @@ def init_schema() -> None:
         )
         conn.execute("CREATE INDEX IF NOT EXISTS chunks_session_idx ON chunks (session_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS docs_session_idx ON documents (session_id)")
+        # Full-text (BM25-style) column for hybrid retrieval — generated + backfilled.
+        conn.execute(
+            "ALTER TABLE chunks ADD COLUMN IF NOT EXISTS ts tsvector "
+            "GENERATED ALWAYS AS (to_tsvector('english', text)) STORED"
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS chunks_ts_idx ON chunks USING GIN (ts)")
 
 
 @dataclass
@@ -119,6 +125,47 @@ def vector_search(session_id: str, query_embedding: list[float], limit: int = 6)
             (qv, session_id, GLOBAL_SESSION, qv, limit),
         )
         return [Hit(text=r[0], file_name=r[1], page_number=r[2], distance=float(r[3])) for r in cur.fetchall()]
+
+
+def hybrid_search(
+    session_id: str, query_embedding: list[float], query_text: str, limit: int = 6
+) -> tuple[list[Hit], float | None]:
+    """Hybrid retrieval: dense (pgvector cosine) + sparse (Postgres BM25/FTS),
+    fused with Reciprocal Rank Fusion. Returns (fused hits, best vector distance).
+    The best vector distance is the relevance-gate signal."""
+    qv = _vec(query_embedding)
+    with _connect() as conn:
+        vrows = conn.execute(
+            "SELECT text, file_name, page_number, (embedding <=> %s) AS dist FROM chunks "
+            "WHERE session_id IN (%s, %s) ORDER BY embedding <=> %s LIMIT 10",
+            (qv, session_id, GLOBAL_SESSION, qv),
+        ).fetchall()
+        krows = conn.execute(
+            "SELECT text, file_name, page_number FROM chunks "
+            "WHERE session_id IN (%s, %s) AND ts @@ plainto_tsquery('english', %s) "
+            "ORDER BY ts_rank(ts, plainto_tsquery('english', %s)) DESC LIMIT 10",
+            (session_id, GLOBAL_SESSION, query_text, query_text),
+        ).fetchall()
+
+    def _key(r):
+        return (r[1], r[2], r[0][:60])
+
+    K = 60.0
+    scores: dict = {}
+    meta: dict = {}
+    for rank, r in enumerate(vrows):
+        k = _key(r)
+        scores[k] = scores.get(k, 0.0) + 1.0 / (K + rank)
+        meta[k] = (r[0], r[1], r[2])
+    for rank, r in enumerate(krows):
+        k = _key(r)
+        scores[k] = scores.get(k, 0.0) + 1.0 / (K + rank)
+        meta.setdefault(k, (r[0], r[1], r[2]))
+
+    best_dist = min((float(r[3]) for r in vrows), default=None)
+    fused = sorted(scores, key=lambda k: scores[k], reverse=True)[:limit]
+    hits = [Hit(text=meta[k][0], file_name=meta[k][1], page_number=meta[k][2], distance=best_dist) for k in fused]
+    return hits, best_dist
 
 
 def list_documents(session_id: str) -> list[dict]:

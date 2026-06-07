@@ -29,19 +29,20 @@ class Source:
     text: str          # the snippet used for grounding
 
 
-@traceable(run_type="retriever", name="vector_search")
-def vector_search(session_id: str, query: str, limit: int = 6) -> tuple[str, list[Source], float | None]:
-    """Semantic search over this session's docs + the global seeded corpus."""
+@traceable(run_type="retriever", name="hybrid_search")
+def hybrid_search(session_id: str, query: str, limit: int = 6) -> tuple[str, list[Source], float | None]:
+    """Hybrid retrieval (dense pgvector + sparse BM25, RRF-fused) over this
+    session's docs + the global seeded corpus."""
     emb = get_embedder().embed([query])[0]
-    hits = storage.vector_search(session_id, emb, limit=limit)
+    hits, best = storage.hybrid_search(session_id, emb, query, limit=limit)
     if not hits:
         return ("No matching chunks in the uploaded documents.", [], None)
-    best = hits[0].distance
     sources = [
         Source(kind="doc", label=f"{h.file_name} p.{h.page_number}", detail=f"p.{h.page_number}", text=h.text)
         for h in hits
     ]
-    summary = f"{len(hits)} chunks; best cosine distance {best:.3f} from {hits[0].file_name} p.{hits[0].page_number}."
+    dist = f"{best:.3f}" if best is not None else "n/a"
+    summary = f"{len(hits)} chunks (vector+BM25, RRF-fused); best vector distance {dist} from {hits[0].file_name} p.{hits[0].page_number}."
     return (summary, sources, best)
 
 

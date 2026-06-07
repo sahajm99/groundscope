@@ -135,9 +135,9 @@ def metadata_node(state: S, writer: StreamWriter) -> S:
 
 
 def vector_node(state: S, writer: StreamWriter) -> S:
-    _emit(writer, state, type="tool_call", tool="vector_search", input=state["question"][:200], summary="Searching your documents.")
-    summary, sources, best = tools.vector_search(state["session_id"], state["question"])
-    _emit(writer, state, type="tool_result", tool="vector_search", summary=summary, score=best,
+    _emit(writer, state, type="tool_call", tool="hybrid_search", input=state["question"][:200], summary="Searching your documents (vector + BM25).")
+    summary, sources, best = tools.hybrid_search(state["session_id"], state["question"])
+    _emit(writer, state, type="tool_result", tool="hybrid_search", summary=summary, score=best,
           preview=(sources[0].text[:220] + "…") if sources else None)
     return {"collected": list(sources), "best": best}
 

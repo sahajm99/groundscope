@@ -35,7 +35,8 @@
   .row { display:flex; gap:8px; align-items:center; padding:0 14px 12px; flex-wrap:wrap; }
   .chip { font:12px ui-monospace,monospace; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:14px; padding:5px 10px; cursor:pointer; }
   .chip:hover{ border-color:var(--blue); }
-  label.upload { font:12px ui-monospace,monospace; color:var(--muted); cursor:pointer; }
+  label.upload { display:inline-flex; align-items:center; gap:7px; font:13px ui-monospace,monospace; font-weight:600; color:var(--text); background:var(--bg); border:1px solid var(--accent-blue); border-radius:8px; padding:8px 14px; cursor:pointer; transition:background .15s; }
+  label.upload:hover { background:rgba(59,130,246,0.14); }
   .docs { padding:9px 14px; border-bottom:1px solid var(--border); display:flex; gap:6px; flex-wrap:wrap; align-items:center; font:12px ui-monospace,monospace; }
   .docs .lbl { color:var(--muted); }
   .docs .empty { color:var(--muted); }
@@ -59,9 +60,9 @@
     <div id="docs" class="docs"></div>
     <div id="chat" class="scroll"></div>
     <div class="row">
-      <span class="chip" onclick="ask(this.textContent)">What does the document say about X?</span>
+      <label class="upload">📎 Upload a document<input id="file" type="file" accept=".pdf,.docx,.txt,.md" style="display:none" onchange="upload()"></label>
       <span class="chip" onclick="ask(this.textContent)">What documents do I have?</span>
-      <label class="upload">📎 upload PDF<input id="file" type="file" accept=".pdf,.docx,.txt,.md" style="display:none" onchange="upload()"></label>
+      <span class="chip" onclick="ask(this.textContent)">What is 128 × 256?</span>
     </div>
     <form onsubmit="event.preventDefault(); ask(document.getElementById('q').value)">
       <input id="q" type="text" placeholder="Ask about your documents…" maxlength="500" autocomplete="off" />
