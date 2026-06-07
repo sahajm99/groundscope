@@ -21,6 +21,27 @@ app = FastAPI(title="Groundscope", version="0.1.0")
 STATIC_DIR = Path(__file__).parent.parent / "static"
 
 
+@app.on_event("startup")
+def _startup():
+    from app.ingestion.embedder import get_embedder
+
+    get_embedder()  # validates embedding dim vs VECTOR_DIM
+    if settings.db_configured:
+        try:
+            from app.storage import init_schema
+
+            init_schema()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Schema init skipped: %s", e)
+
+
+from app.api import ask as ask_api  # noqa: E402
+from app.api import ingest as ingest_api  # noqa: E402
+
+app.include_router(ask_api.router)
+app.include_router(ingest_api.router)
+
+
 @app.get("/health")
 def health():
     """Liveness + subsystem readiness. Also pinged by the keep-warm cron;

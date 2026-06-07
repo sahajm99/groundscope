@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Groundscope — watch the agent think</title>
+<style>
+  :root { --bg:#09090b; --card:#18181b; --border:#27272a; --text:#fafafa; --muted:#a1a1aa; --blue:#3b82f6; --green:#22c55e; --yellow:#eab308; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,sans-serif; }
+  header { padding:16px 24px; border-bottom:1px solid var(--border); }
+  header h1 { margin:0; font-size:18px; } header p { margin:2px 0 0; color:var(--muted); font-size:13px; }
+  main { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:16px 24px; max-width:1200px; margin:0 auto; }
+  @media (max-width:820px){ main{ grid-template-columns:1fr; } }
+  .panel { background:var(--card); border:1px solid var(--border); border-radius:12px; display:flex; flex-direction:column; min-height:60vh; }
+  .panel h2 { font:12px ui-monospace,monospace; color:var(--muted); margin:0; padding:12px 14px; border-bottom:1px solid var(--border); letter-spacing:.05em; }
+  .scroll { flex:1; overflow-y:auto; padding:14px; }
+  .msg { margin-bottom:12px; }
+  .msg.user .b { background:var(--blue); color:#fff; }
+  .msg .b { display:inline-block; background:var(--bg); border:1px solid var(--border); padding:8px 12px; border-radius:10px; white-space:pre-wrap; }
+  .msg.user { text-align:right; }
+  .cite { font:12px ui-monospace,monospace; color:var(--muted); margin-top:6px; }
+  .cite a { color:var(--blue); }
+  .step { border-left:2px solid var(--border); padding:6px 0 6px 12px; margin-bottom:8px; font:13px ui-monospace,monospace; }
+  .step .t { color:var(--muted); }
+  .step.tool_call { border-color:var(--yellow); }
+  .step.tool_result { border-color:var(--green); }
+  .step.decision { border-color:var(--blue); }
+  .step.refusal { border-color:#ef4444; }
+  .tool { color:var(--yellow); } .score { color:var(--green); } .ms { color:var(--muted); float:right; }
+  form { display:flex; gap:8px; padding:12px; border-top:1px solid var(--border); }
+  input[type=text]{ flex:1; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:9px 11px; }
+  button { background:var(--blue); color:#fff; border:0; border-radius:8px; padding:9px 14px; font-weight:600; cursor:pointer; }
+  button:disabled{ opacity:.4; cursor:default; }
+  .row { display:flex; gap:8px; align-items:center; padding:0 14px 12px; flex-wrap:wrap; }
+  .chip { font:12px ui-monospace,monospace; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:14px; padding:5px 10px; cursor:pointer; }
+  .chip:hover{ border-color:var(--blue); }
+  label.upload { font:12px ui-monospace,monospace; color:var(--muted); cursor:pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Groundscope ✦ <span style="color:var(--muted);font-weight:400;font-size:13px">observable agentic RAG</span></h1>
+  <p>Ask a question. Watch the agent search your docs, fall back to the web, and answer with citations — live, on the right.</p>
+</header>
+<main>
+  <section class="panel">
+    <h2>// CHAT</h2>
+    <div id="chat" class="scroll"></div>
+    <div class="row">
+      <span class="chip" onclick="ask(this.textContent)">What does the document say about X?</span>
+      <span class="chip" onclick="ask(this.textContent)">What documents do I have?</span>
+      <label class="upload">📎 upload PDF<input id="file" type="file" accept=".pdf,.docx,.txt,.md" style="display:none" onchange="upload()"></label>
+    </div>
+    <form onsubmit="event.preventDefault(); ask(document.getElementById('q').value)">
+      <input id="q" type="text" placeholder="Ask about your documents…" maxlength="500" autocomplete="off" />
+      <button id="send" type="submit">Ask</button>
+    </form>
+  </section>
+  <section class="panel">
+    <h2>// AGENT TRACE  (watch it think)</h2>
+    <div id="trace" class="scroll"></div>
+  </section>
+</main>
+<script>
+const chat = document.getElementById('chat');
+const trace = document.getElementById('trace');
+const send = document.getElementById('send');
+
+function add(role, text){ const d=document.createElement('div'); d.className='msg '+role;
+  d.innerHTML='<span class="b"></span>'; d.querySelector('.b').textContent=text; chat.appendChild(d);
+  chat.scrollTop=chat.scrollHeight; return d; }
+
+function step(ev){
+  const d=document.createElement('div'); d.className='step '+ev.type;
+  const tool = ev.tool ? `<span class="tool">${ev.tool}</span> ` : '';
+  const score = (ev.score!=null) ? ` <span class="score">d=${ev.score.toFixed(3)}</span>` : '';
+  const ms = ev.ms ? `<span class="ms">${ev.ms}ms</span>` : '';
+  d.innerHTML = `${ms}<span class="t">${ev.type}</span> ${tool}${score}<div>${ev.summary||''}</div>`;
+  trace.appendChild(d); trace.scrollTop=trace.scrollHeight;
+}
+
+async function ask(q){
+  q=(q||'').trim(); if(!q) return; send.disabled=true;
+  document.getElementById('q').value='';
+  add('user', q); trace.innerHTML='';
+  const res = await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
+  if(!res.ok || !res.body){ add('agent', await res.text()); send.disabled=false; return; }
+  const reader=res.body.getReader(), dec=new TextDecoder(); let buf='';
+  while(true){ const {done,value}=await reader.read(); if(done) break;
+    buf+=dec.decode(value,{stream:true}); const blocks=buf.split('\n\n'); buf=blocks.pop();
+    for(const b of blocks){
+      let ev='message', data=''; for(const line of b.split('\n')){
+        if(line.startsWith('event:')) ev=line.slice(6).trim();
+        else if(line.startsWith('data:')) data+=line.slice(5).trim();
+      }
+      if(!data) continue; const p=JSON.parse(data);
+      if(ev==='trace') step(p);
+      else if(ev==='answer'){ const d=add('agent', p.answer);
+        if(p.citations&&p.citations.length){ const c=document.createElement('div'); c.className='cite';
+          c.innerHTML='sources: '+p.citations.map(x=> x.kind==='web' ? `<a href="${x.detail}" target="_blank">${x.label} ↗</a>` : x.label).join(' · ');
+          d.appendChild(c); } }
+    }
+  }
+  send.disabled=false;
+}
+
+async function upload(){
+  const f=document.getElementById('file').files[0]; if(!f) return;
+  const m=add('agent', `Uploading ${f.name}…`);
+  const fd=new FormData(); fd.append('file', f);
+  const res=await fetch('/ingest',{method:'POST',body:fd});
+  const j=await res.json().catch(()=>({}));
+  m.querySelector('.b').textContent = res.ok ? `Ingested ${j.file_name}: ${j.pages} pages, ${j.chunks} chunks. Ask away.` : (j.detail||'Upload failed.');
+}
+</script>
+</body>
+</html>
