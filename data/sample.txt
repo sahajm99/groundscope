@@ -1,0 +1,16 @@
+Zephyr Logistics — Internal Operations Brief
+
+Zephyr Logistics is a regional freight company founded in 2014, headquartered in Akron, Ohio.
+The company operates a fleet of 312 trucks across the Midwest corridor.
+
+Routing System. Zephyr's proprietary routing engine is called "Tailwind". Tailwind assigns
+loads using a three-stage pipeline: demand forecasting, lane optimization, and driver matching.
+The lane optimization stage uses a modified Clarke-Wright savings algorithm tuned for hub-and-spoke
+networks. Tailwind reduced empty-mile percentage from 31% to 18% in its first year of operation.
+
+Driver Program. Zephyr runs a driver-retention program called "Anchor". Anchor pairs each new
+driver with a veteran mentor for the first 90 days and guarantees home time every 14 days.
+Since Anchor launched, annual driver turnover dropped from 94% to 61%.
+
+Maintenance. The company's predictive-maintenance model flags a truck for inspection when the
+combined vibration and oil-temperature score exceeds 0.72. This cut roadside breakdowns by 40%.

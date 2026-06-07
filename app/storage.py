@@ -8,22 +8,32 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
 
 from app.config import settings
 
+
+def _vec(values: list[float]) -> "np.ndarray":
+    """pgvector's psycopg adapter maps numpy float32 arrays to the vector type
+    (a plain Python list is sent as float8[], which the <=> operator rejects)."""
+    return np.asarray(values, dtype=np.float32)
+
 GLOBAL_SESSION = "GLOBAL"  # the seeded sample book every session can query
 
 
-def _connect() -> psycopg.Connection:
+def _connect(register: bool = True) -> psycopg.Connection:
+    """Connect. register=True adapts the pgvector type (requires the extension
+    to already exist) — use register=False for bootstrap/health connections."""
     conn = psycopg.connect(settings.database_url, autocommit=True)
-    register_vector(conn)
+    if register:
+        register_vector(conn)
     return conn
 
 
 def ping_db() -> bool:
-    with _connect() as conn:
+    with _connect(register=False) as conn:
         conn.execute("SELECT 1")
     return True
 
@@ -31,7 +41,7 @@ def ping_db() -> bool:
 def init_schema() -> None:
     """Create the extension + tables + indexes. Idempotent."""
     dim = settings.vector_dim
-    with _connect() as conn:
+    with _connect(register=False) as conn:
         conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
         conn.execute(
             f"""
@@ -84,7 +94,7 @@ def add_document(
             cur.executemany(
                 "INSERT INTO chunks (session_id, doc_id, file_name, page_number, chunk_index, text, embedding)"
                 " VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                [(session_id, doc_id, file_name, pg, ci, txt, emb) for (pg, ci, txt, emb) in rows],
+                [(session_id, doc_id, file_name, pg, ci, txt, _vec(emb)) for (pg, ci, txt, emb) in rows],
             )
         conn.execute(
             "INSERT INTO documents (doc_id, session_id, file_name, pages, chunk_count)"
@@ -96,6 +106,7 @@ def add_document(
 
 def vector_search(session_id: str, query_embedding: list[float], limit: int = 6) -> list[Hit]:
     """Cosine-distance search scoped to this session + the global corpus."""
+    qv = _vec(query_embedding)
     with _connect() as conn:
         cur = conn.execute(
             """
@@ -105,7 +116,7 @@ def vector_search(session_id: str, query_embedding: list[float], limit: int = 6)
             ORDER BY embedding <=> %s
             LIMIT %s
             """,
-            (query_embedding, session_id, GLOBAL_SESSION, query_embedding, limit),
+            (qv, session_id, GLOBAL_SESSION, qv, limit),
         )
         return [Hit(text=r[0], file_name=r[1], page_number=r[2], distance=float(r[3])) for r in cur.fetchall()]
 

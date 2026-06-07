@@ -15,8 +15,8 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.config import get_stream_writer
 
 from app.agent import tools
-from app.agent.llm import complete, complete_json
-from app.agent.loop import _ROUTE_SYS, _SYNTH_SYS
+from app.agent.llm import complete
+from app.agent.loop import _SYNTH_SYS, is_metadata
 from app.agent.trace import TraceEvent
 from app.config import settings
 
@@ -39,10 +39,7 @@ def _emit(state: S, **kw) -> None:
 
 
 def route_node(state: S) -> S:
-    try:
-        route = complete_json(_ROUTE_SYS, state["question"]).get("route", "documents")
-    except Exception:  # noqa: BLE001
-        route = "documents"
+    route = "metadata" if is_metadata(state["question"]) else "documents"
     _emit(state, type="decision", input=state["question"][:200], summary=f"Routed to '{route}'.")
     return {"route": route, "collected": [], "web_ran": False}
 
@@ -70,7 +67,7 @@ def web_node(state: S) -> S:
     _emit(state, type="tool_call", tool="web_search", input=state["question"][:200], summary="Searching the web.")
     wsummary, wsources = tools.web_search(state["question"])
     _emit(state, type="tool_result", tool="web_search", summary=wsummary)
-    return {"collected": state.get("collected", []) + list(wsources), "web_ran": True}
+    return {"collected": list(wsources), "web_ran": True}  # docs were weak — web only
 
 
 def synth_node(state: S) -> S:

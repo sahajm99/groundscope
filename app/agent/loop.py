@@ -15,16 +15,27 @@ import time
 from typing import AsyncIterator
 
 from app.agent import tools
-from app.agent.llm import complete, complete_json
+from app.agent.llm import complete
 from app.agent.trace import TraceEvent
 from app.config import settings
 
-_ROUTE_SYS = (
-    "You route a user question to ONE first tool for a document assistant. "
-    "Return JSON {\"route\": \"documents\"|\"metadata\"}. "
-    "Use \"metadata\" only for questions ABOUT the document set itself "
-    "(which/how many documents, page counts, what's uploaded). Everything else is \"documents\"."
+# Narrow, deterministic detector for "about the document SET" questions. More
+# reliable (and cheaper) than asking a small LLM to route — the funnel principle.
+_META_PHRASES = (
+    "what documents", "which documents", "what files", "which files",
+    "list documents", "list files", "documents do i have", "files do i have",
+    "what did i upload", "what have i uploaded", "what do i have", "what's uploaded",
 )
+
+
+def is_metadata(question: str) -> bool:
+    q = question.lower()
+    if any(p in q for p in _META_PHRASES):
+        return True
+    if "how many" in q and any(w in q for w in ("page", "document", "file", "chunk")):
+        return True
+    return False
+
 
 _SYNTH_SYS = (
     "You answer strictly from the SOURCES block below. Never use outside knowledge. "
@@ -54,14 +65,8 @@ async def run_agent(session_id: str, question: str) -> AsyncIterator[dict]:
         return {"kind": "trace", "payload": ev.to_dict()}
 
     # ── Node: route ───────────────────────────────────────────────
-    t0 = time.monotonic()
-    try:
-        decision = await asyncio.to_thread(complete_json, _ROUTE_SYS, question)
-        route = decision.get("route", "documents")
-    except Exception:
-        route = "documents"
-    yield trace(type="decision", input=question[:200],
-                summary=f"Routed to '{route}'.", ms=_ms(t0))
+    route = "metadata" if is_metadata(question) else "documents"
+    yield trace(type="decision", input=question[:200], summary=f"Routed to '{route}'.")
 
     # ── Node: metadata branch ─────────────────────────────────────
     if route == "metadata":
@@ -96,7 +101,7 @@ async def run_agent(session_id: str, question: str) -> AsyncIterator[dict]:
         t0 = time.monotonic()
         yield trace(type="tool_call", tool="web_search", input=question[:200], summary="Searching the web.")
         wsummary, wsources = await asyncio.to_thread(tools.web_search, question)
-        collected.extend(wsources)
+        collected = list(wsources)  # docs were below threshold — ground on web only
         yield trace(type="tool_result", tool="web_search", summary=wsummary, ms=_ms(t0))
     elif grounded_in_docs:
         yield trace(type="decision", summary=f"Documents are relevant (distance {best:.3f} ≤ {threshold}).")
