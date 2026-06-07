@@ -23,9 +23,15 @@ _ip_hits: dict[str, tuple[int, float]] = {}
 _daily: list = [0, 0.0]
 
 
+def _valid_sid(sid: str | None) -> bool:
+    """A 32-char hex UUID. Trusting a returning cookie (not requiring it to be in
+    the in-memory map) keeps a user's uploads accessible across server restarts."""
+    return bool(sid) and len(sid) == 32 and all(c in "0123456789abcdef" for c in sid)
+
+
 def get_or_create_session(request: Request, response: Response) -> str:
     sid = request.cookies.get(COOKIE)
-    if not sid or sid not in _sessions:
+    if not _valid_sid(sid):
         sid = uuid.uuid4().hex
         response.set_cookie(COOKIE, sid, max_age=settings.session_ttl_seconds, httponly=True, samesite="lax")
     _sessions[sid] = time.time()
