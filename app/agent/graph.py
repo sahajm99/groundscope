@@ -66,7 +66,8 @@ def web_node(state: S) -> S:
     _emit(state, type="decision", summary=f"{reason} Falling back to the web.")
     _emit(state, type="tool_call", tool="web_search", input=state["question"][:200], summary="Searching the web.")
     wsummary, wsources = tools.web_search(state["question"])
-    _emit(state, type="tool_result", tool="web_search", summary=wsummary)
+    _emit(state, type="tool_result", tool="web_search", summary=wsummary,
+          links=[{"title": s.label, "url": s.detail} for s in wsources])
     return {"collected": list(wsources), "web_ran": True}  # docs were weak — web only
 
 

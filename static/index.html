@@ -36,6 +36,15 @@
   .chip { font:12px ui-monospace,monospace; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:14px; padding:5px 10px; cursor:pointer; }
   .chip:hover{ border-color:var(--blue); }
   label.upload { font:12px ui-monospace,monospace; color:var(--muted); cursor:pointer; }
+  .docs { padding:9px 14px; border-bottom:1px solid var(--border); display:flex; gap:6px; flex-wrap:wrap; align-items:center; font:12px ui-monospace,monospace; }
+  .docs .lbl { color:var(--muted); }
+  .docs .empty { color:var(--muted); }
+  .doc-chip { background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:3px 9px; }
+  .doc-chip .meta { color:var(--muted); }
+  .step .links { margin-top:5px; display:flex; flex-direction:column; gap:3px; }
+  .step .links a { color:var(--blue); font-size:12px; text-decoration:none; }
+  .step .links a:hover { text-decoration:underline; }
+  .placeholder { color:var(--muted); font:13px ui-monospace,monospace; padding:8px 2px; }
 </style>
 </head>
 <body>
@@ -46,6 +55,7 @@
 <main>
   <section class="panel">
     <h2>// CHAT</h2>
+    <div id="docs" class="docs"></div>
     <div id="chat" class="scroll"></div>
     <div class="row">
       <span class="chip" onclick="ask(this.textContent)">What does the document say about X?</span>
@@ -59,7 +69,7 @@
   </section>
   <section class="panel">
     <h2>// AGENT TRACE  (watch it think)</h2>
-    <div id="trace" class="scroll"></div>
+    <div id="trace" class="scroll"><div class="placeholder">Ask something, and watch the agent pick tools, search your docs or the web, and ground its answer.</div></div>
   </section>
 </main>
 <script>
@@ -77,8 +87,26 @@ function step(ev){
   const score = (ev.score!=null) ? ` <span class="score">d=${ev.score.toFixed(3)}</span>` : '';
   const ms = ev.ms ? `<span class="ms">${ev.ms}ms</span>` : '';
   d.innerHTML = `${ms}<span class="t">${ev.type}</span> ${tool}${score}<div>${ev.summary||''}</div>`;
+  if(ev.links && ev.links.length){
+    const u=document.createElement('div'); u.className='links';
+    u.innerHTML=ev.links.map(l=>`<a href="${l.url}" target="_blank" rel="noopener">${l.title} ↗</a>`).join('');
+    d.appendChild(u);
+  }
   trace.appendChild(d); trace.scrollTop=trace.scrollHeight;
 }
+
+async function loadDocs(){
+  try{
+    const r=await fetch('/documents'); const j=await r.json();
+    const el=document.getElementById('docs');
+    if(!j.documents || !j.documents.length){
+      el.innerHTML='<span class="empty">📁 No documents yet — upload a PDF to ground answers in it.</span>'; return;
+    }
+    el.innerHTML='<span class="lbl">📁 Documents:</span> '+j.documents.map(d=>
+      `<span class="doc-chip">${d.file_name} <span class="meta">${d.pages}p · ${d.chunk_count} chunks</span></span>`).join('');
+  }catch(e){}
+}
+loadDocs();
 
 async function ask(q){
   q=(q||'').trim(); if(!q) return; send.disabled=true;
@@ -112,6 +140,7 @@ async function upload(){
   const res=await fetch('/ingest',{method:'POST',body:fd});
   const j=await res.json().catch(()=>({}));
   m.querySelector('.b').textContent = res.ok ? `Ingested ${j.file_name}: ${j.pages} pages, ${j.chunks} chunks. Ask away.` : (j.detail||'Upload failed.');
+  if(res.ok) loadDocs();
 }
 </script>
 </body>

@@ -19,6 +19,7 @@ class TraceEvent:
     summary: str = ""           # human-readable result summary
     score: Optional[float] = None  # cosine distance for vector_search, else None
     ms: int = 0
+    links: Optional[list] = None   # [{title, url}] for web_search results
 
     def to_dict(self) -> dict:
         return asdict(self)

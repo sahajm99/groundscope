@@ -102,7 +102,8 @@ async def run_agent(session_id: str, question: str) -> AsyncIterator[dict]:
         yield trace(type="tool_call", tool="web_search", input=question[:200], summary="Searching the web.")
         wsummary, wsources = await asyncio.to_thread(tools.web_search, question)
         collected = list(wsources)  # docs were below threshold — ground on web only
-        yield trace(type="tool_result", tool="web_search", summary=wsummary, ms=_ms(t0))
+        yield trace(type="tool_result", tool="web_search", summary=wsummary, ms=_ms(t0),
+                    links=[{"title": s.label, "url": s.detail} for s in wsources])
     elif grounded_in_docs:
         yield trace(type="decision", summary=f"Documents are relevant (distance {best:.3f} ≤ {threshold}).")
 

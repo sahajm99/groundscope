@@ -54,3 +54,12 @@ async def ingest(request: Request, response: Response, file: UploadFile = File(.
         "pages": len(pages),
         "chunks": len(chunks),
     }
+
+
+@router.get("/documents")
+def documents(request: Request, response: Response):
+    """List the documents available to this session (uploads + seeded corpus)."""
+    if not settings.db_configured:
+        return {"documents": []}
+    sid = sessions.get_or_create_session(request, response)
+    return {"documents": storage.list_documents(sid)}
