@@ -69,7 +69,8 @@ def health():
 def index():
     idx = STATIC_DIR / "index.html"
     if idx.exists():
-        return FileResponse(idx)
+        # no-store so iterating on the frontend never serves stale JS
+        return FileResponse(idx, headers={"Cache-Control": "no-store"})
     return {"service": "groundscope", "hint": "frontend not built yet — see /health"}
 
 
