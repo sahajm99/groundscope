@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_base_url: str = "https://api.groq.com/openai/v1"
     llm_model: str = "llama-3.3-70b-versatile"
+    # Model router / failover (tiered): primary -> smaller same-provider model ->
+    # optional second provider (set fallback api key + base url, e.g. Gemini).
+    llm_fallback_model: str = "llama-3.1-8b-instant"
+    llm_fallback_api_key: str = ""
+    llm_fallback_base_url: str = ""
+    # Circuit breaker
+    breaker_threshold: int = 5
+    breaker_cooldown_s: int = 60
 
     # Embeddings
     embed_provider: str = "local"  # "local" (fastembed) | "openai" (compatible API)
