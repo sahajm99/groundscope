@@ -1,0 +1,7 @@
+{
+  "groundscope-utils": {
+    "command": "python",
+    "args": ["mcp_servers/util_server.py"],
+    "transport": "stdio"
+  }
+}
