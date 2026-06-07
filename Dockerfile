@@ -14,6 +14,8 @@ RUN python -c "from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-smal
 COPY app ./app
 COPY static ./static
 COPY scripts ./scripts
+COPY mcp_servers ./mcp_servers
+COPY mcp.json ./mcp.json
 
 ENV PORT=8000
 EXPOSE 8000
