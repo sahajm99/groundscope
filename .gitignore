@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Env / secrets
+.env
+.env.local
+
+# Data / uploads (ephemeral)
+data/uploads/
+*.sqlite
+
+# Models cache (fastembed downloads here)
+.fastembed_cache/
+
+# OS
+.DS_Store
