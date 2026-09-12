@@ -37,6 +37,8 @@ log = logging.getLogger(__name__)
 
 REFUSAL_PREFIX = "I can't ground an answer to that"
 KNOWLEDGE_PATH_TOOLS = frozenset({"web_search"})  # invoked by the graph, never offered as an "action"
+SOURCE_CHARS = 3000  # a 400-word chunk is ~2,500 chars; never cut a chunk in half
+MAX_SOURCES = 10  # bounded prompt: up to 3 branches x 6 chunks, deduped
 
 __all__ = ["run_agent_graph", "run_agent_graph_full", "get_bus", "ToolError", "ToolUnavailable"]
 
@@ -348,7 +350,8 @@ async def synth_node(state: S, writer: StreamWriter) -> dict:
         return {"answer": ans, "citations": []}
 
     block = "\n\n".join(
-        f"[{s.label}{(' - ' + s.detail) if s.kind == 'web' else ''}]\n{s.text[:1200]}" for s in collected
+        f"[{s.label}{(' - ' + s.detail) if s.kind == 'web' else ''}]\n{s.text[:SOURCE_CHARS]}"
+        for s in collected[:MAX_SOURCES]
     )
     ans = await asyncio.to_thread(complete, _SYNTH_SYS, f"QUESTION:\n{state['question']}\n\nSOURCES:\n{block}")
     if ans.strip().startswith(REFUSAL_PREFIX):

@@ -196,3 +196,20 @@ async def test_tool_worker_fails_over_to_the_fallback_model(monkeypatch):
     _, answer = await run("2+2?", bus, monkeypatch)
     assert answer["answer"] == "FINAL 4"
     assert any(m == graph.settings.llm_fallback_model for m, _ in log)
+
+
+async def test_synthesis_sees_the_whole_chunk(monkeypatch):
+    """Found by the evals: sources were cut to 1,200 chars but a 400-word chunk is ~2,500,
+    so facts in the second half of a chunk were never shown to the model (it refused)."""
+    captured = {}
+
+    def fake_complete(system, user, **kw):
+        captured["user"] = user
+        return "ANSWER [sample.txt p.1]"
+
+    monkeypatch.setattr(graph, "complete", fake_complete)
+    long_chunk = ("filler sentence about logistics. " * 70) + "The readmission rate fell from 17% to 11%."
+    assert len(long_chunk) > 2000
+    bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.2, "sources": [dict(DOC, text=long_chunk)]}})
+    await run("readmission?", bus, monkeypatch)
+    assert "fell from 17% to 11%" in captured["user"]
