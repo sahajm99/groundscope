@@ -109,6 +109,7 @@ def evaluate(cases: list[dict], run_case: RunCase, judge: J.Judge, th: Threshold
             context_precision=scores.context_precision, claims=scores.claims,
             failed_checks=failed, judge_error=scores.error, ms=int((time.monotonic() - t0) * 1000),
             judge_model_used=getattr(J, "last_judge_model", None),
+            agent_model_used=answer.get("model"),
         )
         rows.append(row)
 

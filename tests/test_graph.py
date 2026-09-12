@@ -33,7 +33,7 @@ class FakeBus(ToolBus):
 def _patch(monkeypatch):
     monkeypatch.setattr(graph, "_embed", lambda text: [0.0])
     monkeypatch.setattr(graph.settings, "tavily_api_key", "x")
-    monkeypatch.setattr(graph, "complete", lambda system, user, **kw: "ANSWER [sample.txt p.1]")
+    monkeypatch.setattr(graph, "complete_ex", lambda system, user, **kw: ("ANSWER [sample.txt p.1]", "fake-model"))
     monkeypatch.setattr(graph, "complete_json", lambda system, user, **kw: {"route": "knowledge", "subqueries": []})
     graph._graph = None
 
@@ -121,7 +121,8 @@ async def test_steps_are_renumbered_monotonically(monkeypatch):
 async def test_refusal_answer_carries_no_citations(monkeypatch):
     """If the model answers with the refusal sentence, the sources it declined to use must
     not be shown as citations (found by /qa: a refusal listed junk web links as sources)."""
-    monkeypatch.setattr(graph, "complete", lambda system, user, **kw: "I can't ground an answer to that in your documents or the web.")
+    monkeypatch.setattr(graph, "complete_ex",
+                        lambda system, user, **kw: ("I can't ground an answer to that in your documents or the web.", "m"))
     bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "1 chunk", "score": 0.9, "sources": [DOC]},
                    "web_search": lambda **kw: {"summary": "1 web results", "configured": True, "sources": [WEB]}})
     events, answer = await run("xxxxxxxx", bus, monkeypatch)
@@ -205,9 +206,9 @@ async def test_synthesis_sees_the_whole_chunk(monkeypatch):
 
     def fake_complete(system, user, **kw):
         captured["user"] = user
-        return "ANSWER [sample.txt p.1]"
+        return "ANSWER [sample.txt p.1]", "m"
 
-    monkeypatch.setattr(graph, "complete", fake_complete)
+    monkeypatch.setattr(graph, "complete_ex", fake_complete)
     long_chunk = ("filler sentence about logistics. " * 70) + "The readmission rate fell from 17% to 11%."
     assert len(long_chunk) > 2000
     bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.2, "sources": [dict(DOC, text=long_chunk)]}})
@@ -277,5 +278,56 @@ async def test_react_chat_waits_out_a_per_minute_rate_limit_before_failing_over(
 
     monkeypatch.setattr(graph, "_chat_model", lambda tools, model: Chat(model))
     monkeypatch.setattr(graph, "asyncio", SimpleNamespace(sleep=fake_sleep))
-    out = await graph._chat_with_failover([], None)
-    assert out == "ok" and calls == [graph.settings.llm_model] * 2 and slept
+    out, used = await graph._chat_with_failover([], None)
+    assert out == "ok" and used == graph.settings.llm_model
+    assert calls == [graph.settings.llm_model] * 2 and slept
+
+
+# -- Which model answered, and which sources the answer actually used ---------------------
+
+
+async def test_synthesis_trace_names_the_model_that_answered(monkeypatch):
+    """With three tiers and daily quotas, 'it answered' is not enough: the trace line and the
+    answer payload must say whether Groq or Gemini wrote it."""
+    monkeypatch.setattr(graph, "complete_ex", lambda system, user, **kw: ("ANSWER [sample.txt p.1]", "model-x"))
+    bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "1 chunk", "score": 0.2, "sources": [DOC]}})
+    events, answer = await run("q", bus, monkeypatch)
+    synth = [e for e in events if e["type"] == "synthesis"]
+    assert synth and "model-x" in synth[0]["summary"]
+    assert answer["model"] == "model-x"
+
+
+async def test_sources_list_only_what_the_answer_cites(monkeypatch):
+    """Found on the live site: a resume question also retrieved a Zephyr chunk (inside the
+    gate) and the Sources block listed it although the answer never used it."""
+    other = {"kind": "doc", "label": "zephyr.txt p.1", "detail": "p.1", "text": "Zephyr runs 312 trucks."}
+    bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.2, "sources": [other, DOC]}})
+    _, answer = await run("routing engine?", bus, monkeypatch)  # the fixture answer cites [sample.txt p.1]
+    assert [c["label"] for c in answer["citations"]] == ["sample.txt p.1"]
+
+
+async def test_sources_fall_back_to_everything_retrieved_when_the_answer_cites_nothing(monkeypatch):
+    monkeypatch.setattr(graph, "complete_ex", lambda system, user, **kw: ("An answer with no markers.", "m"))
+    other = {"kind": "doc", "label": "zephyr.txt p.1", "detail": "p.1", "text": "Zephyr runs 312 trucks."}
+    bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.2, "sources": [other, DOC]}})
+    _, answer = await run("q", bus, monkeypatch)
+    assert [c["label"] for c in answer["citations"]] == ["zephyr.txt p.1", "sample.txt p.1"]
+
+
+async def test_page_labels_match_whole_page_numbers_only(monkeypatch):
+    """'book.txt p.1' must not be kept because the answer cites 'book.txt p.10'."""
+    monkeypatch.setattr(graph, "complete_ex", lambda system, user, **kw: ("See [book.txt p.10].", "m"))
+    p1 = {"kind": "doc", "label": "book.txt p.1", "detail": "p.1", "text": "one"}
+    p10 = {"kind": "doc", "label": "book.txt p.10", "detail": "p.10", "text": "ten"}
+    bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.2, "sources": [p1, p10]}})
+    _, answer = await run("q", bus, monkeypatch)
+    assert [c["label"] for c in answer["citations"]] == ["book.txt p.10"]
+
+
+async def test_web_source_is_kept_when_the_answer_cites_its_url(monkeypatch):
+    monkeypatch.setattr(graph, "complete_ex", lambda system, user, **kw: ("Answer [Web: a title - https://u]", "m"))
+    other = dict(WEB, label="Other", detail="https://o", text="o")
+    bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.9, "sources": []},
+                   "web_search": lambda **kw: {"summary": "", "configured": True, "sources": [WEB, other]}})
+    _, answer = await run("q", bus, monkeypatch)
+    assert [c["detail"] for c in answer["citations"]] == ["https://u"]

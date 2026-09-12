@@ -27,7 +27,11 @@ def extract_pages(file_bytes: bytes, file_name: str) -> list[Page]:
     elif lower.endswith(".docx"):
         pages = _extract_docx(file_bytes)
     elif lower.endswith((".txt", ".md")):
-        pages = [Page(1, file_bytes.decode("utf-8", errors="ignore"))]
+        # A form feed (\f) marks a page break, so a seeded book can cite by chapter
+        # ('bhagavad-gita.txt p.2' = chapter 2) instead of every chunk saying p.1.
+        text = file_bytes.decode("utf-8", errors="ignore")
+        parts = [p for p in text.split("\f") if p.strip()] or [text]
+        pages = [Page(i, p) for i, p in enumerate(parts, start=1)]
     else:
         raise NoTextError(f"Unsupported file type: {file_name}")
 

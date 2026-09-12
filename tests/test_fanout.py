@@ -136,9 +136,9 @@ async def test_different_chunks_with_the_same_page_label_all_reach_synthesis(mon
 
     def fake_complete(system, user, **kw):
         captured["user"] = user
-        return "ANSWER [sample.txt p.1]"
+        return "ANSWER [sample.txt p.1]", "m"
 
-    monkeypatch.setattr(graph, "complete", fake_complete)
+    monkeypatch.setattr(graph, "complete_ex", fake_complete)
     _, answer = await run("A", bus, monkeypatch)
     assert "chunk one about Slipstream" in captured["user"]
     assert "chunk two about Northstar" in captured["user"]
@@ -158,9 +158,9 @@ async def test_aggregate_interleaves_branches_so_each_branch_keeps_its_top_hits(
 
     def fake_complete(system, user, **kw):
         captured["user"] = user
-        return "ANSWER [sample.txt p.1]"
+        return "ANSWER [sample.txt p.1]", "m"
 
-    monkeypatch.setattr(graph, "complete", fake_complete)
+    monkeypatch.setattr(graph, "complete_ex", fake_complete)
     monkeypatch.setattr(graph, "MAX_SOURCES", 4)
     bus = FakeBus({"hybrid_search": hs})
     await run("A and B", bus, monkeypatch)

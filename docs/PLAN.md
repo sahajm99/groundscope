@@ -12,14 +12,14 @@ Updated 2026-09-12. This is the working plan; `docs/PROGRESS.md` records what is
 | 2.0c golden set + judge + CI gate | yes | PR run 34704978970 green; 3 regressions caught red |
 | Hardening (locks, timeouts, caps, XSS) | yes | tests/test_hardening.py |
 | Merged to main, Render serving v2 | yes | merge 574496e; deploy 2def8d4 Live |
-| Render env (model names, Gemini key) | yes (you, 18:43 UTC) | live grounded answer with citations |
+| Render env (model names, Gemini key) | yes (you, 18:43 UTC) | live grounded and web answers with citations |
 | Live grounded question | yes | resume question answered from the PDF |
-| Live web-fallback question | pending | quotas capped tonight |
+| Live web-fallback question | yes | 2025 Nobel Prize in Physics answered from four web results, cited |
 | Green badge on main | pending | runs 34707065998 / 34707733909 red (flake fixed; quota) |
-| Rate-limit fix (per-minute vs per-day) | committed locally (91b6863), not pushed | 97 tests; push when budgets return |
+| Rate-limit fix, model in trace, cited-only sources, demo corpus, v2.0.1 | committed locally, not pushed | 106 tests, ruff and pyright clean; scheduled push after the 07:00 UTC quota reset |
 | /canary, /document-release | pending | after badge |
 | Portfolio `projects.ts` pushed | pending (drafted, typechecks) | |
-| Seed a public document into prod | pending (your pick) | prod DB has sample.txt only |
+| Seed a public document into prod | yes | Bhagavad-Gita (Arnold, public domain): 18 chapters as pages, 64 chunks, GLOBAL |
 | Cerebras capacity | not possible (PayGo, 402) | docs/BLOCKED.md |
 
 ## Goal (confirmed 2026-09-12)

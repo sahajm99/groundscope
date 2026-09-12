@@ -76,9 +76,20 @@ docker run -d --name gs-pg -p 5433:5432 -e POSTGRES_USER=gs -e POSTGRES_PASSWORD
   -e POSTGRES_DB=groundscope pgvector/pgvector:pg16
 export DATABASE_URL=postgresql://gs:gs@localhost:5433/groundscope
 python -m scripts.seed data/sample.txt data/corpus/*.txt   # idempotent
+python -m scripts.seed data/demo/bhagavad-gita.txt         # the public demo corpus (see below)
 
 uvicorn app.main:app --reload            # http://localhost:8000
 ```
+
+### Demo corpus
+
+The live demo is seeded with the Bhagavad-Gita in Sir Edwin Arnold's 1885 verse translation
+(*The Song Celestial*; public domain, Project Gutenberg #2388), built by
+`python -m scripts.fetch_gita` into `data/demo/bhagavad-gita.txt`. The file is one document
+whose 18 pages are the 18 chapters (a form feed separates them), so a citation like
+`bhagavad-gita.txt p.2` points at chapter 2 and anyone can check the source. The golden set
+does not use it on purpose: the model knows the Gita by heart, so a Gita case could pass from
+memory without grounding; the eval corpus stays fictional (`data/corpus/`).
 
 ## Tests and evals
 

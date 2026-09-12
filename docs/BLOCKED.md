@@ -27,7 +27,9 @@ Nothing is blocked as of 2026-09-12 15:20 UTC.
 
 ## Open (2026-09-12 18:30 UTC)
 
-### Live site: Render dashboard still carries the retired Llama model names
+### Resolved 18:43 UTC: Render dashboard model names
+- Set by the user; a grounded answer (resume PDF) and a web answer (2025 Nobel Prize in
+  Physics) were verified live afterwards. Original note kept below.
 - `groundscope.onrender.com` retrieves and web-searches fine but synthesis fails with
   `NotFoundError`, because dashboard env values override `render.yaml`. Needs, in the Render
   dashboard: `LLM_MODEL=openai/gpt-oss-120b`, `LLM_FALLBACK_MODEL=openai/gpt-oss-20b`, and

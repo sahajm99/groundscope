@@ -125,3 +125,15 @@ Resumed sessions: read this, then `docs/DECISIONS.md` and `docs/BLOCKED.md`, the
   (recorded per case), and every tier failure is logged. Local proof with the real
   providers: judge ran on `qwen/qwen3.8-27b`; tier log shows the TPD messages.
 - Push and re-run held until the daily budgets return (see BLOCKED.md).
+
+## Evening 2026-09-12: demo corpus, model in the trace, cited-only sources
+- Live proofs after the Render env fix: grounded (resume PDF, cited) and web fallback (2025
+  Nobel Prize in Physics, four web results, cited). Both paths of the goal paragraph work live.
+- Demo corpus: `scripts/fetch_gita.py` builds `data/demo/bhagavad-gita.txt` (Arnold, public
+  domain) with the 18 chapters as pages; seeded into production as a GLOBAL document.
+- Code (TDD, 106 tests): text files split pages on form feeds; synthesis reports the model that
+  answered (trace line, `model` in the payload, `agent_model_used` in eval rows); the Sources
+  block keeps only what the answer cites (whole page numbers; all kept when nothing is cited).
+- Cerebras: account is PayGo (402 on every model); not usable on the free tier.
+- Push held until the daily quotas return; a scheduled job pushes and re-runs the badge
+  workflow after Gemini's 07:00 UTC reset.

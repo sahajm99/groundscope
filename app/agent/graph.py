@@ -19,6 +19,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import operator
+import re
+import unicodedata
 from collections.abc import AsyncIterator
 from typing import Annotated, Any, Optional, TypedDict
 
@@ -26,7 +28,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send, StreamWriter
 
 from app.agent import tools
-from app.agent.llm import complete, complete_json, same_tier_wait_s
+from app.agent.llm import complete_ex, complete_json, same_tier_wait_s
 from app.agent.loop import _SYNTH_SYS, is_metadata
 from app.agent.toolbus import CONTEXT_TOOLS, ToolError, ToolUnavailable, get_bus
 from app.agent.trace import TraceEvent
@@ -112,6 +114,24 @@ def _citations(collected: list) -> list[dict]:
     return out
 
 
+def _norm(text: str) -> str:
+    return " ".join(unicodedata.normalize("NFKC", text).split()).casefold()
+
+
+def _cited(answer: str, citations: list[dict]) -> list[dict]:
+    """The Sources block lists what the answer actually used: the citations whose label (or,
+    for web results, URL) the answer mentions. A page label must match the whole page number
+    ('p.1' is not 'p.10'). If the answer names none of them, every retrieved source stays,
+    so a model that forgets its markers still shows its evidence."""
+    text = _norm(answer)
+    used = []
+    for c in citations:
+        keys = [c["label"]] + ([c["detail"]] if c["kind"] == "web" and c.get("detail") else [])
+        if any(k and re.search(re.escape(_norm(k)) + r"(?!\d)", text) for k in keys):
+            used.append(c)
+    return used or citations
+
+
 def _chat_model(tools: list | None, model: str):
     """Seam for the ReAct worker (tests fake it). Tools bound when given."""
     from langchain_openai import ChatOpenAI
@@ -124,7 +144,8 @@ def _chat_model(tools: list | None, model: str):
 
 async def _chat_with_failover(msgs: list, tools: list | None):
     """Primary model, then the fallback model (the ReAct path bypasses llm.complete's router).
-    Same rule as the router: a per-minute rate limit is waited out on the same model."""
+    Same rule as the router: a per-minute rate limit is waited out on the same model.
+    Returns (message, model that answered)."""
     models = [settings.llm_model]
     if settings.llm_fallback_model and settings.llm_fallback_model != settings.llm_model:
         models.append(settings.llm_fallback_model)
@@ -133,7 +154,7 @@ async def _chat_with_failover(msgs: list, tools: list | None):
         waits = 0
         while True:
             try:
-                return await _chat_model(tools, m).ainvoke(msgs)
+                return await _chat_model(tools, m).ainvoke(msgs), m
             except Exception as e:  # noqa: BLE001
                 last = e
                 w = same_tier_wait_s(e)
@@ -245,6 +266,7 @@ async def tool_worker_node(state: S, writer: StreamWriter) -> dict:
         return {"answer": ans}
 
     tool_map = {t.name: t for t in bound}
+    used = settings.llm_model
     msgs: list = [
         SystemMessage("You are an agent that answers using the provided tools. "
                       "Call tools as needed, then give a concise final answer. "
@@ -254,7 +276,7 @@ async def tool_worker_node(state: S, writer: StreamWriter) -> dict:
     citations: list = []
     ai: AIMessage | None = None
     for _ in range(settings.max_tool_rounds + 1):
-        msg = await _chat_with_failover(msgs, bound)
+        msg, used = await _chat_with_failover(msgs, bound)
         ai = msg if isinstance(msg, AIMessage) else AIMessage(content=str(msg.content))
         msgs.append(ai)
         if not ai.tool_calls:
@@ -282,10 +304,10 @@ async def tool_worker_node(state: S, writer: StreamWriter) -> dict:
         # Rounds ran out mid-tool-call, or the model returned no text: ask for a final answer
         # with no tools bound so the visitor never sees an empty reply.
         msgs.append(HumanMessage("Give your final answer now, using the tool results above. Do not call tools."))
-        final = await _chat_with_failover(msgs, None)
+        final, used = await _chat_with_failover(msgs, None)
         ans = final.content if isinstance(final.content, str) else str(final.content)
-    _emit(writer, state, type="synthesis", summary="Answered using tools.")
-    writer({"kind": "answer", "payload": {"answer": ans, "citations": citations}})
+    _emit(writer, state, type="synthesis", summary=f"Answered using tools with {used}.")
+    writer({"kind": "answer", "payload": {"answer": ans, "citations": citations, "model": used}})
     return {"answer": ans}
 
 
@@ -405,17 +427,17 @@ async def synth_node(state: S, writer: StreamWriter) -> dict:
         for s in collected[:MAX_SOURCES]
     )
     # temperature 0: the smoke and eval gates need repeatable synthesis
-    ans = await asyncio.to_thread(
-        lambda: complete(_SYNTH_SYS, f"QUESTION:\n{state['question']}\n\nSOURCES:\n{block}", temperature=0.0)
+    ans, used = await asyncio.to_thread(
+        lambda: complete_ex(_SYNTH_SYS, f"QUESTION:\n{state['question']}\n\nSOURCES:\n{block}", temperature=0.0)
     )
     if ans.strip().startswith(REFUSAL_PREFIX):
         # The model judged the sources insufficient: show no citations for a non-answer.
         _emit(writer, state, type="refusal", summary="Sources did not contain the answer; refused rather than guess.")
-        writer({"kind": "answer", "payload": {"answer": ans, "citations": []}})
+        writer({"kind": "answer", "payload": {"answer": ans, "citations": [], "model": used}})
         return {"answer": ans, "citations": []}
-    _emit(writer, state, type="synthesis", summary="Synthesized a grounded answer.")
-    citations = _citations(collected)
-    writer({"kind": "answer", "payload": {"answer": ans, "citations": citations}})
+    _emit(writer, state, type="synthesis", summary=f"Synthesized a grounded answer with {used}.")
+    citations = _cited(ans, _citations(collected))
+    writer({"kind": "answer", "payload": {"answer": ans, "citations": citations, "model": used}})
     return {"answer": ans, "citations": citations}
 
 

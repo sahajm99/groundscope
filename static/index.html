@@ -71,6 +71,7 @@
     <div class="row">
       <label class="upload">📎 Upload a document<input id="file" type="file" accept=".pdf,.docx,.txt,.md" style="display:none" onchange="upload()"></label>
       <span class="chip" onclick="ask(this.textContent)">What documents do I have?</span>
+      <span class="chip" onclick="ask(this.textContent)">What does the Gita say about the soul in Chapter 2?</span>
       <span class="chip" onclick="ask(this.textContent)">What is 128 × 256?</span>
     </div>
     <form onsubmit="event.preventDefault(); ask(document.getElementById('q').value)">
@@ -209,7 +210,8 @@ async function ask(q){
         if(!data) continue; const p=JSON.parse(data);
         if(ev==='trace') step(p);
         else if(ev==='answer'){ const d=add('agent', p.answer);
-          if(p.citations&&p.citations.length){ d.appendChild(sourcesBlock(p.citations)); } }
+          if(p.citations&&p.citations.length){ d.appendChild(sourcesBlock(p.citations)); }
+          if(p.model){ d.appendChild(el('div','src-d','answered by '+p.model)); } }
       }
     }
     send.disabled=false;

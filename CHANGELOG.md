@@ -3,6 +3,24 @@
 All notable changes to Groundscope. Format follows Keep a Changelog; versions follow the
 roadmap milestones in `docs/v2-roadmap.md`.
 
+## [2.0.1] - 2026-09-12
+
+### Added
+- **Demo corpus.** The Bhagavad-Gita in Sir Edwin Arnold's 1885 translation (public domain,
+  Project Gutenberg #2388) is seeded into the live demo as one document whose pages are its 18
+  chapters, so a citation reads `bhagavad-gita.txt p.2` for chapter 2 (`scripts/fetch_gita.py`,
+  `data/demo/`). A plain-text upload may use a form feed as a page break.
+- **Which model answered.** The trace's synthesis line and the answer payload (`model`) name the
+  model that wrote the answer; the eval report records `agent_model_used` per case.
+
+### Changed
+- **Sources list what the answer used.** Citations are filtered to the labels (or URLs) the
+  answer references, with page numbers matched whole (`p.1` is not `p.10`); if the answer
+  names none, every retrieved source is shown.
+- **Rate limits.** A per-minute 429 (Groq's 8K tokens/minute) is waited out on the same tier
+  instead of failing over; a daily cap fails over at once. The eval judge falls back to the
+  Groq judge model when Gemini is rate-limited, recorded per case. Every tier failure is logged.
+
 ## [2.0.0] - 2026-09-12
 
 The "agent harness" release: one MCP tool bus, parallel query fan-out, and an eval gate in CI.

@@ -268,3 +268,12 @@ def test_judge_falls_to_the_groq_judge_when_gemini_daily_quota_is_gone(monkeypat
     assert seen == [settings.gemini_judge_model, settings.eval_judge_model]
     assert J.last_judge_model == settings.eval_judge_model
     assert not slept  # a daily cap is not waited on
+
+
+def test_report_records_the_agent_model_used():
+    """With three tiers, a case's score is only interpretable next to the model that answered."""
+    def agent(case):
+        return [], {"answer": "It is Tailwind [zephyr p.1].", "citations": [{"kind": "doc"}], "model": "agent-y"}, {"collected": [_Src("Tailwind is it")]}
+
+    rep = R.evaluate(CASES, agent, judge_ok, TH, pace=0)
+    assert rep.cases[0]["agent_model_used"] == "agent-y"
