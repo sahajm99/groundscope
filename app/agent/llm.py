@@ -71,38 +71,64 @@ def _tiers() -> list[tuple[str, str, str]]:
     return tiers
 
 
-def complete(
-    system: str, user: str, temperature: float = 0.2, max_tokens: int = 700, model: str | None = None
-) -> str:
-    """Route through the tiers. An explicit `model` (e.g. the eval judge) becomes the first
-    tier on the primary provider; the configured tiers remain as fallbacks."""
+def complete_ex(
+    system: str, user: str, temperature: float = 0.2, max_tokens: int = 700,
+    model: str | None = None, strict_model: bool = False,
+) -> tuple[str, str]:
+    """Route through the tiers; return (text, model that answered).
+
+    An explicit `model` (e.g. the eval judge) becomes the first tier on the primary provider,
+    with the configured tiers as fallbacks; `strict_model=True` disables the fallbacks so a
+    judge can never silently become the agent model."""
     tiers = _tiers()
     if model:
-        tiers = [(model, settings.llm_base_url, settings.llm_api_key)] + [t for t in tiers if t[0] != model]
+        tiers = [(model, settings.llm_base_url, settings.llm_api_key)]
+        if not strict_model:
+            tiers += [t for t in _tiers() if t[0] != model]
     start = 1 if (_breaker.is_open() and len(tiers) > 1 and not model) else 0
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     last_err: Exception | None = None
     for i in range(start, len(tiers)):
-        model, base, key = tiers[i]
+        tier_model, base, key = tiers[i]
         try:
             resp = _client(base, key).chat.completions.create(
-                model=model, temperature=temperature, max_tokens=max_tokens, messages=messages,
+                model=tier_model, temperature=temperature, max_tokens=max_tokens, messages=messages,
             )
-            if i == 0:
+            if i == 0 and not model:
                 _breaker.record_success()
-            return (resp.choices[0].message.content or "").strip()
+            return (resp.choices[0].message.content or "").strip(), tier_model
         except Exception as e:  # noqa: BLE001
             last_err = e
-            if i == 0:
+            if i == 0 and not model:
                 _breaker.record_failure()
             continue
     raise last_err if last_err else RuntimeError("no LLM tier available")
 
 
-def complete_json(system: str, user: str, model: str | None = None, max_tokens: int = 300) -> dict:
+def complete(
+    system: str, user: str, temperature: float = 0.2, max_tokens: int = 700,
+    model: str | None = None, strict_model: bool = False,
+) -> str:
+    return complete_ex(system, user, temperature, max_tokens, model=model, strict_model=strict_model)[0]
+
+
+def complete_json(
+    system: str, user: str, model: str | None = None, max_tokens: int = 300, strict_model: bool = False
+) -> dict:
     """Ask for a JSON object back; tolerate fenced code blocks."""
-    raw = complete(system + "\nRespond ONLY with a JSON object.", user, temperature=0.0,
-                   max_tokens=max_tokens, model=model).strip()
+    return complete_json_ex(system, user, model=model, max_tokens=max_tokens, strict_model=strict_model)[0]
+
+
+def complete_json_ex(
+    system: str, user: str, model: str | None = None, max_tokens: int = 300, strict_model: bool = False
+) -> tuple[dict, str]:
+    """complete_json plus the model that answered."""
+    raw, used = complete_ex(system + "\nRespond ONLY with a JSON object.", user, temperature=0.0,
+                            max_tokens=max_tokens, model=model, strict_model=strict_model)
+    return _parse_json(raw.strip()), used
+
+
+def _parse_json(raw: str) -> dict:
     if raw.startswith("```"):
         raw = raw.split("```")[1].lstrip("json").strip()
     try:

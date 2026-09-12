@@ -143,3 +143,27 @@ async def test_different_chunks_with_the_same_page_label_all_reach_synthesis(mon
     assert "chunk one about Slipstream" in captured["user"]
     assert "chunk two about Northstar" in captured["user"]
     assert answer["citations"] == [{"label": "sample.txt p.1", "kind": "doc", "detail": "p.1"}]  # one citation per page
+
+
+async def test_aggregate_interleaves_branches_so_each_branch_keeps_its_top_hits(monkeypatch):
+    """The synthesizer sees at most MAX_SOURCES chunks (token budget). Merging branch 0's six
+    chunks before branch 1's would drop branch 1's best hit; merge round-robin by rank."""
+    monkeypatch.setattr(graph, "complete_json", _plan(["A", "B"]))
+
+    def hs(**kw):
+        b = kw["query"]
+        return {"summary": "", "score": 0.2, "sources": [dict(DOC, text=f"{b}{i}") for i in range(6)]}
+
+    captured = {}
+
+    def fake_complete(system, user, **kw):
+        captured["user"] = user
+        return "ANSWER [sample.txt p.1]"
+
+    monkeypatch.setattr(graph, "complete", fake_complete)
+    monkeypatch.setattr(graph, "MAX_SOURCES", 4)
+    bus = FakeBus({"hybrid_search": hs})
+    await run("A and B", bus, monkeypatch)
+    user = captured["user"]
+    assert "A0" in user and "B0" in user and "A1" in user and "B1" in user
+    assert "A2" not in user and "B2" not in user

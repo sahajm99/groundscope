@@ -129,12 +129,19 @@ def deterministic_checks(case: dict, answer: str, citations: list[dict]) -> list
     return failed
 
 
+last_judge_model: str | None = None  # the model that actually answered the last judge call
+
+
 def groq_judge(system: str, user: str) -> dict:
-    """The real judge: the eval judge model through the app's tiered router (JSON mode)."""
-    from app.agent.llm import complete_json
+    """The real judge: the configured judge model, strictly (no silent fallback to the agent
+    model); a failure scores the case zero rather than being judged by the wrong model."""
+    global last_judge_model
+    from app.agent.llm import complete_json_ex
     from app.config import settings
 
-    return complete_json(system, user, model=settings.eval_judge_model, max_tokens=900)
+    out, used = complete_json_ex(system, user, model=settings.eval_judge_model, max_tokens=900, strict_model=True)
+    last_judge_model = used
+    return out
 
 
 def dumps(scores: CaseScores) -> str:

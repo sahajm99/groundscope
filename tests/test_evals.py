@@ -184,3 +184,25 @@ def test_print_table_handles_unscored_rows(capsys):
     R._print_table(rep)
     out = capsys.readouterr().out
     assert "m " in out and "FAIL" in out
+
+
+def test_rate_limited_case_is_retried_once_after_a_pause(monkeypatch):
+    calls = {"n": 0}
+
+    def flaky(case):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("RateLimitError: 429 tokens per minute")
+        return _good(case)
+
+    slept = []
+    monkeypatch.setattr(R.time, "sleep", lambda s: slept.append(s))
+    rep = R.evaluate(CASES, flaky, judge_ok, TH, pace=0)
+    assert rep.passed and calls["n"] == 2
+    assert slept and max(slept) >= 20
+
+
+def test_report_records_the_judge_model_actually_used(monkeypatch):
+    monkeypatch.setattr(J, "last_judge_model", "judge-x", raising=False)
+    rep = R.evaluate(CASES, _good, judge_ok, TH, pace=0)
+    assert rep.cases[0]["judge_model_used"] == "judge-x"

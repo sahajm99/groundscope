@@ -37,8 +37,8 @@ log = logging.getLogger(__name__)
 
 REFUSAL_PREFIX = "I can't ground an answer to that"
 KNOWLEDGE_PATH_TOOLS = frozenset({"web_search"})  # invoked by the graph, never offered as an "action"
-SOURCE_CHARS = 3000  # a 400-word chunk is ~2,500 chars; never cut a chunk in half
-MAX_SOURCES = 10  # bounded prompt: up to 3 branches x 6 chunks, deduped
+SOURCE_CHARS = 2600  # a 400-word chunk is ~2,500 chars; never cut a chunk in half
+MAX_SOURCES = 6  # ~4K tokens of sources: fits the free-tier per-minute cap; branches merged round-robin
 
 __all__ = ["run_agent_graph", "run_agent_graph_full", "get_bus", "ToolError", "ToolUnavailable"]
 
@@ -321,8 +321,13 @@ def aggregate_node(state: S, writer: StreamWriter) -> dict:
     branches = sorted(state.get("branches", []), key=lambda x: x["branch"])
     seen: set = set()
     collected: list = []
-    for br in branches:
-        for s in br["sources"]:
+    # Round-robin by rank across branches: the synthesizer sees at most MAX_SOURCES chunks,
+    # so every branch keeps its top hits instead of branch 0 filling the budget.
+    for rank in range(max((len(br["sources"]) for br in branches), default=0)):
+        for br in branches:
+            if rank >= len(br["sources"]):
+                continue
+            s = br["sources"][rank]
             # Chunks of the same page share a label; key on the text too so distinct chunks survive.
             k = (s.kind, s.label, s.detail, s.text[:160])
             if k not in seen:

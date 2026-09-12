@@ -59,6 +59,25 @@ def _contexts(final_state: dict) -> list[str]:
     return [getattr(s, "text", "") for s in (final_state or {}).get("collected", []) or []]
 
 
+RATE_LIMIT_PAUSE_S = 30.0
+
+
+def _is_rate_limit(e: BaseException) -> bool:
+    s = f"{type(e).__name__} {e}".lower()
+    return "429" in s or "rate limit" in s or "ratelimit" in s or "tokens per minute" in s
+
+
+def _run_with_rate_limit_retry(run_case: RunCase, case: dict) -> tuple[list[dict], dict, dict]:
+    """Free-tier per-minute caps: wait out the window once, then retry."""
+    try:
+        return run_case(case)
+    except Exception as e:  # noqa: BLE001
+        if not _is_rate_limit(e):
+            raise
+        time.sleep(RATE_LIMIT_PAUSE_S)
+        return run_case(case)
+
+
 def evaluate(cases: list[dict], run_case: RunCase, judge: J.Judge, th: Thresholds, pace: float = 0.0) -> Report:
     rows: list[dict] = []
     for i, case in enumerate(cases):
@@ -67,7 +86,7 @@ def evaluate(cases: list[dict], run_case: RunCase, judge: J.Judge, th: Threshold
         row: dict[str, Any] = {"id": case.get("id"), "kind": case.get("kind"), "question": case.get("question")}
         t0 = time.monotonic()
         try:
-            events, answer, final = run_case(case)
+            events, answer, final = _run_with_rate_limit_retry(run_case, case)
         except Exception as e:  # noqa: BLE001
             row.update(error=f"{type(e).__name__}: {str(e)[:200]}", failed_checks=["agent_error"],
                        faithfulness=0.0, answer_relevance=0.0, context_precision=0.0, ms=int((time.monotonic() - t0) * 1000))
@@ -88,6 +107,7 @@ def evaluate(cases: list[dict], run_case: RunCase, judge: J.Judge, th: Threshold
             faithfulness=scores.faithfulness, answer_relevance=scores.answer_relevance,
             context_precision=scores.context_precision, claims=scores.claims,
             failed_checks=failed, judge_error=scores.error, ms=int((time.monotonic() - t0) * 1000),
+            judge_model_used=getattr(J, "last_judge_model", None),
         )
         rows.append(row)
 
