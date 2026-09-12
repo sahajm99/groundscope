@@ -17,6 +17,8 @@ the judge.
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -99,12 +101,24 @@ def score_case(
     return CaseScores(faithfulness, relevance, precision, claims=len(valid))
 
 
+_DASHES = dict.fromkeys(map(ord, "\u2010\u2011\u2012\u2013\u2014\u2212"), "-")
+_SPACES = dict.fromkeys(map(ord, "\u00a0\u202f\u2007\u2009"), " ")
+
+
+def normalize(text: str) -> str:
+    """Compare meaning, not bytes: fold the Unicode dashes and spaces the models like to
+    emit, strip markdown emphasis, collapse whitespace, lowercase."""
+    t = unicodedata.normalize("NFKC", text).translate(_DASHES).translate(_SPACES)
+    t = t.replace("**", "").replace("__", "")
+    return re.sub(r"\s+", " ", t).strip().lower()
+
+
 def deterministic_checks(case: dict, answer: str, citations: list[dict]) -> list[str]:
     """Hard gates independent of the judge. Returns the names of failed checks."""
     failed: list[str] = []
-    low = answer.lower()
+    low = normalize(answer)
     for s in case.get("must_contain", []) or []:
-        if str(s).lower() not in low:
+        if normalize(str(s)) not in low:
             failed.append(f"must_contain:{s}")
     kinds = {c.get("kind") for c in citations}
     if case.get("expect_grounded"):

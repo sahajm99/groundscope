@@ -168,3 +168,19 @@ def test_metadata_cases_skip_the_judge_but_keep_deterministic_checks():
     assert rep.cases[0]["failed_checks"] == []
     assert rep.summary["faithfulness"] is None  # no judged cases -> reported as None, and the gate fails
     assert not rep.passed
+
+
+def test_must_contain_ignores_unicode_hyphens_and_nbsp():
+    """gpt-oss writes 'Clarke‑Wright' (non-breaking hyphen) and 'Priya Raman' (narrow nbsp)."""
+    case = {"kind": "grounded", "expect_grounded": True, "must_contain": ["Clarke-Wright", "Priya Raman", "9 minutes"]}
+    answer = "A modified Clarke‑Wright algorithm; CFO **Priya Raman**; about 9 minutes."
+    assert J.deterministic_checks(case, answer, [{"kind": "doc"}]) == []
+
+
+def test_print_table_handles_unscored_rows(capsys):
+    rep = R.Report(passed=False, summary={"failed_thresholds": ["x"]},
+                   cases=[{"id": "m", "kind": "metadata", "faithfulness": None, "answer_relevance": None,
+                           "context_precision": None, "branches": 0, "failed_checks": []}])
+    R._print_table(rep)
+    out = capsys.readouterr().out
+    assert "m " in out and "FAIL" in out

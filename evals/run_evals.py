@@ -154,11 +154,13 @@ def shutdown_runner() -> None:
 
 def _print_table(rep: Report) -> None:
     print(f"{'id':5} {'kind':9} {'faith':>6} {'relev':>6} {'prec':>6} {'br':>2} checks")
+    def fmt(v) -> str:
+        return "-" if v is None else f"{v:.2f}"
+
     for r in rep.cases:
-        prec = "-" if r.get("context_precision") is None else f"{r['context_precision']:.2f}"
         checks = "ok" if not r.get("failed_checks") else ",".join(r["failed_checks"])
-        print(f"{r['id']:5} {str(r.get('kind')):9} {r.get('faithfulness', 0):6.2f} {r.get('answer_relevance', 0):6.2f} "
-              f"{prec:>6} {r.get('branches', 0):2} {checks}")
+        print(f"{r['id']:5} {str(r.get('kind')):9} {fmt(r.get('faithfulness')):>6} {fmt(r.get('answer_relevance')):>6} "
+              f"{fmt(r.get('context_precision')):>6} {r.get('branches') or 0:2} {checks}")
     print("summary:", json.dumps(rep.summary))
     print("PASS" if rep.passed else f"FAIL: below threshold on {rep.summary['failed_thresholds']}")
 
