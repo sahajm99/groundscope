@@ -62,7 +62,7 @@ Resumed sessions: read this, then `docs/DECISIONS.md` and `docs/BLOCKED.md`, the
 - Supabase project resumed by Sahaj; `/health` on the live site reports `db_reachable: true`.
 - GitHub secrets `LLM_API_KEY`, `TAVILY_API_KEY` set. No Gemini key (judge stays on Groq).
 
-## Phase 1 (eval gate green locally): in progress
+## Phase 1 (eval gate green locally): DONE (2026-09-12, run 8)
 - Done: round-robin branch merge + 6 whole-chunk synthesis budget (was cutting chunks at
   1,200 chars); strict judge model recorded per case; rate-limit retry; Unicode-tolerant
   checks; OR-semantics keyword leg; metadata cases skip the judge.
@@ -80,3 +80,10 @@ Resumed sessions: read this, then `docs/DECISIONS.md` and `docs/BLOCKED.md`, the
 ## Phase 3 (answer experience): 3.1 and 3.2 done, 3.3 pending a document choice
 - Goal paragraph in README and design doc; sources block with title link, domain, and the
   snippet used (`docs/screenshots/sources-block.png` pending a quota-free browser run).
+
+## Phase 1 result: eval run 8 PASS (2026-09-12)
+- `python -m evals.run_evals --pace 6` -> exit 0. 18 cases, hard_check_failures 0,
+  checks_pass_rate 1.0, faithfulness 0.8824, answer_relevance 0.9647, context_precision
+  0.3443 (threshold 0.25, calibrated; DECISIONS 24), agent_errors 0, judge_errors 0.
+  Agent `openai/gpt-oss-120b`, judge `gemini-3.5-flash-lite` (Gemini key added by Sahaj).
+- Eight runs were needed; each of the first seven exposed a real defect (see DECISIONS 17-24).
