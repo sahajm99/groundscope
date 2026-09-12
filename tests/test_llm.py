@@ -123,3 +123,99 @@ def test_last_tier_retries_once_after_a_rate_limit(monkeypatch):
     monkeypatch.setattr(llm.settings, "llm_api_key", "k")
     text, used = llm.complete_ex("s", "u", model="only", strict_model=True)
     assert text == '{"ok": true}' and calls["n"] == 2 and slept and slept[0] >= 20
+
+
+# -- Per-minute vs per-day rate limits (2026-09-12 CI failure) ---------------------------
+# Groq's free tier caps each model at 8K tokens/minute. A burst 429 says "try again in 1.2s";
+# failing over on it spilled every burst to Gemini, whose 500 requests/day were gone by the
+# afternoon, and 11 of 18 eval cases then had no model at all.
+
+
+def test_retry_after_parses_groq_and_gemini_messages():
+    import pytest
+
+    p = llm._retry_after_s
+    assert p(RuntimeError("Error code: 429 - Rate limit reached ... Please try again in 1.234s.")) == pytest.approx(1.234)
+    assert p(RuntimeError("Error code: 429 - ... Please try again in 2m38.4s. Need more?")) == pytest.approx(158.4)
+    assert p(RuntimeError("Error code: 429 - ... Please try again in 3h2m1s.")) == pytest.approx(10921.0)
+    assert p(RuntimeError("Error code: 429 - ... Please retry in 17.41s.")) == pytest.approx(17.41)
+    assert p(RuntimeError("Error code: 429 - no hint at all")) is None
+
+
+def test_daily_quota_is_recognized_from_the_message():
+    d = llm._is_daily_quota
+    assert d(RuntimeError("429 ... 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier' ... retry in 17s"))
+    assert d(RuntimeError("429 Rate limit reached for model x on tokens per day (TPD): Limit 200000. try again in 3h"))
+    assert not d(RuntimeError("429 Rate limit reached for model x on tokens per minute (TPM): Limit 8000. try again in 1.2s"))
+
+
+def test_short_rate_limit_waits_and_retries_the_same_tier(monkeypatch):
+    calls: list[str] = []
+
+    class Burst(FakeClient):
+        def _create(self, **kw):
+            calls.append(kw["model"])
+            if len(calls) == 1:
+                raise RuntimeError("Error code: 429 - Rate limit reached for model x on tokens per minute (TPM): "
+                                   "Limit 8000, Used 7000, Requested 3000. Please try again in 1.2s.")
+            return super()._create(**kw)
+
+    slept: list[float] = []
+    monkeypatch.setattr(llm.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(llm, "_client", lambda base, key: Burst([]))
+    monkeypatch.setattr(llm.settings, "llm_api_key", "k")
+    text, used = llm.complete_ex("s", "u")
+    assert used == llm.settings.llm_model and calls == [llm.settings.llm_model] * 2
+    assert slept and 1.2 <= slept[0] <= 5
+
+
+def test_daily_quota_fails_over_immediately_without_sleeping(monkeypatch):
+    calls: list[str] = []
+
+    class Daily(FakeClient):
+        def _create(self, **kw):
+            calls.append(kw["model"])
+            if kw["model"] == llm.settings.llm_model:
+                raise RuntimeError("Error code: 429 - Rate limit reached for model x on tokens per day (TPD): "
+                                   "Limit 200000, Used 199000, Requested 3000. Please try again in 3h2m1s.")
+            return super()._create(**kw)
+
+    slept: list[float] = []
+    monkeypatch.setattr(llm.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(llm, "_client", lambda base, key: Daily([]))
+    monkeypatch.setattr(llm.settings, "llm_api_key", "k")
+    text, used = llm.complete_ex("s", "u")
+    assert used == llm.settings.llm_fallback_model and not slept
+
+
+def test_last_tier_does_not_retry_a_daily_quota(monkeypatch):
+    """Gemini's daily-cap 429 says 'retry in 17s' but means midnight; a 35 s pause is wasted."""
+    import pytest
+
+    class Gone(FakeClient):
+        def _create(self, **kw):
+            raise RuntimeError("Error code: 429 - GenerateRequestsPerDayPerProjectPerModel-FreeTier. Please retry in 17s.")
+
+    slept: list[float] = []
+    monkeypatch.setattr(llm.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(llm, "_client", lambda base, key: Gone([]))
+    with pytest.raises(RuntimeError):
+        llm.complete_ex("s", "u", model="only", strict_model=True)
+    assert not slept
+
+
+def test_each_tier_failure_is_logged_with_the_provider_message(monkeypatch, caplog):
+    """Silent failover hid a day of Groq refusals; the reason each tier failed must be visible."""
+    import logging
+
+    class PrimaryDown(FakeClient):
+        def _create(self, **kw):
+            if kw["model"] == llm.settings.llm_model:
+                raise RuntimeError("Error code: 429 - on tokens per day (TPD): Limit 200000, Used 199990")
+            return super()._create(**kw)
+
+    monkeypatch.setattr(llm, "_client", lambda base, key: PrimaryDown([]))
+    monkeypatch.setattr(llm.settings, "llm_api_key", "k")
+    with caplog.at_level(logging.WARNING, logger="app.agent.llm"):
+        llm.complete_ex("s", "u")
+    assert any(llm.settings.llm_model in r.message and "TPD" in r.message for r in caplog.records)

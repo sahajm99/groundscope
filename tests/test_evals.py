@@ -242,3 +242,29 @@ def test_judge_retries_once_after_a_rate_limit(monkeypatch):
     monkeypatch.setattr(llm, "complete_json_ex", flaky)
     out = J.groq_judge("s", "u")
     assert out["relevance"] == 1.0 and calls["n"] == 2 and slept and slept[0] >= 30
+
+
+def test_judge_falls_to_the_groq_judge_when_gemini_daily_quota_is_gone(monkeypatch):
+    """Gemini's 500 requests/day ran out mid-run on 2026-09-12 and three cases scored zero as
+    'judge errors'. The configured Groq judge (a different model than the agent) is an explicit
+    second judge, and the model actually used is recorded per case; the agent model is never used."""
+    from app.agent import llm
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "gemini_api_key", "g")
+    seen: list[str] = []
+
+    def fake(system, user, **kw):
+        seen.append(kw["model"])
+        if kw["model"] == settings.gemini_judge_model:
+            raise RuntimeError("Error code: 429 - 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier'")
+        return {"claims": [], "relevance": 1.0, "context_relevant": []}, kw["model"]
+
+    slept: list[float] = []
+    monkeypatch.setattr(llm, "complete_json_ex", fake)
+    monkeypatch.setattr(J.time, "sleep", lambda s: slept.append(s))
+    out = J.groq_judge("s", "u")
+    assert out["relevance"] == 1.0
+    assert seen == [settings.gemini_judge_model, settings.eval_judge_model]
+    assert J.last_judge_model == settings.eval_judge_model
+    assert not slept  # a daily cap is not waited on

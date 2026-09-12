@@ -26,7 +26,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send, StreamWriter
 
 from app.agent import tools
-from app.agent.llm import complete, complete_json
+from app.agent.llm import complete, complete_json, same_tier_wait_s
 from app.agent.loop import _SYNTH_SYS, is_metadata
 from app.agent.toolbus import CONTEXT_TOOLS, ToolError, ToolUnavailable, get_bus
 from app.agent.trace import TraceEvent
@@ -123,17 +123,27 @@ def _chat_model(tools: list | None, model: str):
 
 
 async def _chat_with_failover(msgs: list, tools: list | None):
-    """Primary model, then the fallback model (the ReAct path bypasses llm.complete's router)."""
+    """Primary model, then the fallback model (the ReAct path bypasses llm.complete's router).
+    Same rule as the router: a per-minute rate limit is waited out on the same model."""
     models = [settings.llm_model]
     if settings.llm_fallback_model and settings.llm_fallback_model != settings.llm_model:
         models.append(settings.llm_fallback_model)
     last: Exception | None = None
     for m in models:
-        try:
-            return await _chat_model(tools, m).ainvoke(msgs)
-        except Exception as e:  # noqa: BLE001
-            last = e
-            log.warning("chat model %s failed: %s: %s", m, type(e).__name__, e)
+        waits = 0
+        while True:
+            try:
+                return await _chat_model(tools, m).ainvoke(msgs)
+            except Exception as e:  # noqa: BLE001
+                last = e
+                w = same_tier_wait_s(e)
+                if w is not None and waits < 2:
+                    waits += 1
+                    log.info("chat model %s rate-limited for the minute; retrying in %.1fs", m, w)
+                    await asyncio.sleep(w)
+                    continue
+                log.warning("chat model %s failed: %s: %s", m, type(e).__name__, e)
+                break
     raise last if last else RuntimeError("no chat model available")
 
 

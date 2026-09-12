@@ -114,3 +114,14 @@ Resumed sessions: read this, then `docs/DECISIONS.md` and `docs/BLOCKED.md`, the
   ran on the weakest tier and did not split a two-part question. Hotfix on main:
   `split_questions()` decomposes explicit multi-question input deterministically (no model
   call); the smoke question is phrased as two questions.
+
+## Main runs after the merge (2026-09-12, evening)
+- Run 34707065998 (5a32095): 17/18, one flaky web case (empty Tavily result -> refusal);
+  fixed on main in 2def8d4 (empty web search retried once).
+- Run 34707733909 (2def8d4): red on quota, not code: Groq 120b/20b both at their 200K
+  tokens/day cap, Gemini at 500 requests/day; 11 agent errors, 3 judge errors.
+- Fix (7 new tests, 97 pass, ruff/pyright clean): per-minute 429s wait on the same tier,
+  daily 429s fail over at once, the judge falls to the Groq judge when Gemini is capped
+  (recorded per case), and every tier failure is logged. Local proof with the real
+  providers: judge ran on `qwen/qwen3.8-27b`; tier log shows the TPD messages.
+- Push and re-run held until the daily budgets return (see BLOCKED.md).

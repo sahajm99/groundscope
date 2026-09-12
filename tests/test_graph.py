@@ -250,3 +250,32 @@ async def test_planner_uses_the_deterministic_split(monkeypatch):
     events, _ = await run("What is Zephyr's routing engine called? Who is the CEO of Microsoft?", bus, monkeypatch)
     assert calls["llm"] == 0
     assert {e["branch"] for e in events if e["type"] == "tool_call"} == {0, 1}
+
+
+async def test_react_chat_waits_out_a_per_minute_rate_limit_before_failing_over(monkeypatch):
+    """The ReAct path bypasses llm.complete's router and must apply the same rule: a Groq
+    per-minute 429 is waited out on the same model, not spilled to the next tier."""
+    from types import SimpleNamespace
+
+    calls: list[str] = []
+
+    class Chat:
+        def __init__(self, model):
+            self.model = model
+
+        async def ainvoke(self, msgs):
+            calls.append(self.model)
+            if len(calls) == 1:
+                raise RuntimeError("Error code: 429 - Rate limit reached for model x on tokens per minute (TPM): "
+                                   "Limit 8000. Please try again in 0.8s.")
+            return "ok"
+
+    slept: list[float] = []
+
+    async def fake_sleep(s):
+        slept.append(s)
+
+    monkeypatch.setattr(graph, "_chat_model", lambda tools, model: Chat(model))
+    monkeypatch.setattr(graph, "asyncio", SimpleNamespace(sleep=fake_sleep))
+    out = await graph._chat_with_failover([], None)
+    assert out == "ok" and calls == [graph.settings.llm_model] * 2 and slept

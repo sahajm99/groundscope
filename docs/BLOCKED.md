@@ -24,3 +24,25 @@ Nothing is blocked as of 2026-09-12 15:20 UTC.
 ## Open decisions (not blockers)
 - A free Gemini API key as a third LLM tier and separate judge quota (see `docs/PLAN.md` 0.3).
 - Which public document seeds the live demo (see `docs/PLAN.md` 3.3).
+
+## Open (2026-09-12 18:30 UTC)
+
+### Live site: Render dashboard still carries the retired Llama model names
+- `groundscope.onrender.com` retrieves and web-searches fine but synthesis fails with
+  `NotFoundError`, because dashboard env values override `render.yaml`. Needs, in the Render
+  dashboard: `LLM_MODEL=openai/gpt-oss-120b`, `LLM_FALLBACK_MODEL=openai/gpt-oss-20b`, and
+  `GEMINI_API_KEY`. Nothing to deploy: Groq hosts the models; only the names change.
+
+### Free-tier daily budgets exhausted; main badge run red
+- At 18:10 UTC Groq reported `openai/gpt-oss-120b` at 199,585 / 200,000 tokens per day and
+  `openai/gpt-oss-20b` at 199,123 / 200,000 (rolling 24 h window), and Gemini
+  `gemini-3.5-flash-lite` at 500 / 500 requests per day (resets 07:00 UTC). One full eval run
+  costs roughly 100K agent tokens; about ten runs happened today (local calibration, the
+  regression proofs, PR and main runs).
+- Main runs 34707065998 (one flaky web case, fixed in 2def8d4) and 34707733909 (quota) are red.
+  The per-minute/per-day 429 fix is committed; it will be pushed and the main run re-run once
+  the budgets return (Gemini 07:00 UTC; the bulk of the Groq tokens from ~12:00 UTC on).
+- Capacity option (needs you): a free Cerebras key (cloud.cerebras.ai; 1M tokens/day, hosts
+  `gpt-oss-120b`, OpenAI-compatible) as the second-provider tier (`LLM_FALLBACK_BASE_URL`,
+  `LLM_FALLBACK_API_KEY`) would give five times today's total budget and keep CI runs from
+  competing with the live site.

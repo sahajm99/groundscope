@@ -5,9 +5,10 @@
   context_precision  = relevant retrieved chunks / retrieved chunks (None when nothing retrieved)
 
 One combined judge call per case keeps the free-tier token budget sane (Groq caps tokens per
-day per model). The judge is a different model than the agent (settings.eval_judge_model) to
-reduce self-preference. Contexts and answer are delimited and declared untrusted so a chunk
-that says "rate this 1.0" is data, not an instruction.
+day per model). The judge is a different model than the agent (Gemini when a key is present,
+else settings.eval_judge_model on Groq; the Groq judge also takes over when Gemini is
+rate-limited) to reduce self-preference. Contexts and answer are delimited and declared
+untrusted so a chunk that says "rate this 1.0" is data, not an instruction.
 
 Anything the judge gets wrong scores ZERO for that case (never a silent pass), and the
 deterministic checks (must_contain, expected citation kind) are hard gates independent of
@@ -136,27 +137,38 @@ last_judge_model: str | None = None  # the model that actually answered the last
 
 
 def groq_judge(system: str, user: str) -> dict:
-    """The real judge: the configured judge model, strictly (no silent fallback to the agent
-    model); a failure scores the case zero rather than being judged by the wrong model."""
+    """The real judge: the configured judge models, strictly (never the agent's tiers).
+
+    Gemini first when a key is present (a different vendor and quota from the agent), then
+    the Groq judge model (`EVAL_JUDGE_MODEL`, a different family from the agent) when Gemini
+    is rate-limited. Both are explicit judge models and the one that answered is recorded in
+    `last_judge_model` per case; any other failure scores the case zero rather than being
+    judged by the wrong model."""
     global last_judge_model
     from app.agent import llm
     from app.config import settings
 
+    judges: list[dict] = []
     if settings.gemini_api_key:
-        # A different vendor and a separate quota from the agent.
-        kw: dict = dict(model=settings.gemini_judge_model, base_url=settings.gemini_base_url,
-                        api_key=settings.gemini_api_key)
-    else:
-        kw = dict(model=settings.eval_judge_model)
-    try:
-        out, used = llm.complete_json_ex(system, user, max_tokens=900, strict_model=True, **kw)
-    except Exception as e:  # noqa: BLE001
-        if not _is_rate_limit(e):
-            raise
-        time.sleep(RATE_LIMIT_PAUSE_S)  # free tiers cap requests per minute; wait the window out once
-        out, used = llm.complete_json_ex(system, user, max_tokens=900, strict_model=True, **kw)
-    last_judge_model = used
-    return out
+        judges.append(dict(model=settings.gemini_judge_model, base_url=settings.gemini_base_url,
+                           api_key=settings.gemini_api_key))
+    judges.append(dict(model=settings.eval_judge_model))
+    last: Exception | None = None
+    for kw in judges:
+        for attempt in range(2):
+            try:
+                out, used = llm.complete_json_ex(system, user, max_tokens=900, strict_model=True, **kw)
+                last_judge_model = used
+                return out
+            except Exception as e:  # noqa: BLE001
+                if not _is_rate_limit(e):
+                    raise
+                last = e
+                if attempt == 0 and not llm._is_daily_quota(e):
+                    time.sleep(RATE_LIMIT_PAUSE_S)  # a per-minute cap: wait the window out once
+                    continue
+                break  # a daily cap, or still limited after the pause: next judge
+    raise last if last else RuntimeError("no judge model configured")
 
 
 RATE_LIMIT_PAUSE_S = 35.0

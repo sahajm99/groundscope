@@ -1,13 +1,15 @@
 """LLM access with a tiered model router + circuit breaker (Etech7 patterns).
 
 Router tiers (tried in order, failing over on error):
-  1. primary model (Groq Llama 3.3 70B)
-  2. smaller same-provider model (Llama 3.1 8B instant)
+  1. primary model (Groq, openai/gpt-oss-120b)
+  2. smaller same-provider model (Groq, openai/gpt-oss-20b)
   3. optional second provider (set LLM_FALLBACK_API_KEY + LLM_FALLBACK_BASE_URL)
+  4. Gemini (gemini-3.5-flash-lite) when GEMINI_API_KEY is set
 
-Circuit breaker: after N consecutive primary failures the breaker opens for a
-cooldown, during which calls skip the primary and go straight to the fallback —
-preventing retry storms against a failing provider.
+A per-minute rate limit is waited out on the same tier; a per-day cap fails over
+(see same_tier_wait_s). Circuit breaker: after N consecutive primary failures the
+breaker opens for a cooldown, during which calls skip the primary and go straight to
+the fallback, preventing retry storms against a failing provider.
 
 Each client is wrapped for LangSmith tracing when enabled.
 """
@@ -15,10 +17,14 @@ Each client is wrapped for LangSmith tracing when enabled.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import re
 import time
 
 from app.config import settings
+
+log = logging.getLogger(__name__)
 
 
 class _Breaker:
@@ -78,6 +84,44 @@ def _is_rate_limit(e: BaseException) -> bool:
     return "429" in s or "rate limit" in s or "ratelimit" in s or "resource_exhausted" in s
 
 
+# Two kinds of 429 that need opposite responses. Groq's free tier caps each model at 8K
+# tokens per MINUTE: a burst is refused with "try again in 1.2s" and is fine a moment later.
+# A per-DAY cap ("tokens per day (TPD)", Gemini's "...PerDay..." quota id) is not; only
+# another tier can help. On 2026-09-12 every per-minute refusal failed over to Gemini, which
+# absorbed the spillover all day until its 500 requests/day were gone, and then 11 of 18 eval
+# cases had no model at all.
+_DAILY_MARKERS = ("per day", "perday", "(tpd)", "(rpd)")
+MAX_SAME_TIER_WAIT_S = 30.0
+_RETRY_HINT = re.compile(r"(?:try again|retry) in ((?:\d+h)?(?:\d+m)?(?:\d+(?:\.\d+)?s)?)", re.I)
+
+
+def _retry_after_s(e: BaseException) -> float | None:
+    """Seconds the provider asked us to wait ('try again in 2m38.4s', 'retry in 17.41s'), or
+    None when the message carries no hint."""
+    m = _RETRY_HINT.search(str(e))
+    if not m or not m.group(1):
+        return None
+    hint = m.group(1)
+    h, mi, s = re.search(r"(\d+)h", hint), re.search(r"(\d+)m", hint), re.search(r"(\d+(?:\.\d+)?)s", hint)
+    return (int(h.group(1)) * 3600 if h else 0) + (int(mi.group(1)) * 60 if mi else 0) + (float(s.group(1)) if s else 0.0)
+
+
+def _is_daily_quota(e: BaseException) -> bool:
+    s = str(e).lower()
+    return any(k in s for k in _DAILY_MARKERS)
+
+
+def same_tier_wait_s(e: BaseException) -> float | None:
+    """How long to wait before retrying the SAME model, or None to fail over: a per-minute
+    burst with a short hint is waited out; a daily cap, or a long or missing hint, fails over."""
+    if not _is_rate_limit(e) or _is_daily_quota(e):
+        return None
+    w = _retry_after_s(e)
+    if w is None or w > MAX_SAME_TIER_WAIT_S:
+        return None
+    return w + 0.5
+
+
 def _client(base_url: str, api_key: str):
     if base_url not in _clients:
         from openai import OpenAI
@@ -129,7 +173,8 @@ def complete_ex(
     for i in range(start, len(tiers)):
         tier_model, base, key = tiers[i]
         is_last = i == len(tiers) - 1
-        for attempt in range(2):
+        waits = 0
+        while True:
             cap = _rpm_cap(base)
             if cap:
                 _throttle(base, cap)
@@ -142,11 +187,19 @@ def complete_ex(
                 return (resp.choices[0].message.content or "").strip(), tier_model
             except Exception as e:  # noqa: BLE001
                 last_err = e
+                log.warning("llm tier %s failed: %s: %s", tier_model, type(e).__name__, str(e)[:300])
                 if i == 0 and not model:
                     _breaker.record_failure()
-                # The last tier gets one more try after a rate-limit window; earlier tiers
-                # fail over immediately instead of waiting.
-                if is_last and attempt == 0 and _is_rate_limit(e):
+                # A per-minute burst is waited out on the same tier (at most twice).
+                w = same_tier_wait_s(e)
+                if w is not None and waits < 2:
+                    waits += 1
+                    time.sleep(w)
+                    continue
+                # The last tier gets one more try after a rate-limit window, unless the cap
+                # is a daily one that no pause fixes; earlier tiers fail over instead.
+                if is_last and waits == 0 and _is_rate_limit(e) and not _is_daily_quota(e):
+                    waits += 1
                     time.sleep(RATE_LIMIT_RETRY_PAUSE_S)
                     continue
                 break
