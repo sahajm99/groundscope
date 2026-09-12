@@ -50,5 +50,10 @@ Resumed sessions: read this, then `docs/DECISIONS.md` and `docs/BLOCKED.md`, the
   evals, artifact; docker build job), README badge.
 - Unit-proven: `pytest tests/test_evals.py tests/test_llm.py` -> 17 passed (fake judge/agent:
   a regressed grounding fails, a judge saying unfaithful fails, an agent crash fails).
+- Docker: `docker build -t groundscope .` succeeds locally; the container boots, reaches the
+  test DB via host.docker.internal, and `/health` lists all three MCP servers (env inheritance
+  proven in the Docker environment Render uses).
+- QA (quick tier, local run): 8 flows pass, 1 low issue found and fixed (refusal answers no
+  longer list unused sources), report in `.gstack/qa-reports/`.
 - Next: real local eval run numbers; push branch; CI run; deliberate-regression proof.
 
