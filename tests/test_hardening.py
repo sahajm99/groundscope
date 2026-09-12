@@ -104,7 +104,7 @@ async def test_tool_calls_per_round_are_capped(monkeypatch):
     from tests.test_graph import _tool as graph_tool
 
     monkeypatch.setattr(graph, "_embed", lambda text: [0.0])
-    monkeypatch.setattr(graph, "complete_json", lambda s, u: {"route": "tools", "subqueries": []})
+    monkeypatch.setattr(graph, "complete_json", lambda s, u, **kw: {"route": "tools", "subqueries": []})
 
     class Chat:
         def __init__(self, tools, model):

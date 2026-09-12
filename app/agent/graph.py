@@ -196,7 +196,10 @@ async def planner_node(state: S, writer: StreamWriter) -> dict:
         action_tools = [t for t in open_tools if t.name not in KNOWLEDGE_PATH_TOOLS]
         desc = "; ".join(f"{t.name}: {(t.description or '')[:80]}" for t in action_tools) or "none"
         try:
-            d = await asyncio.to_thread(complete_json, _PLAN_SYS.format(desc=desc, cap=settings.max_subqueries), q)
+            # gpt-oss spends completion tokens on reasoning first; 300 truncated the plan JSON.
+            d = await asyncio.to_thread(
+                lambda: complete_json(_PLAN_SYS.format(desc=desc, cap=settings.max_subqueries), q, max_tokens=600)
+            )
             route = d.get("route") if d.get("route") in ("tools", "knowledge") else "knowledge"
             subqueries = _clean_subqueries(d.get("subqueries"), q, settings.max_subqueries)
         except Exception as e:  # noqa: BLE001
@@ -335,12 +338,16 @@ async def retrieval_worker(state: W, writer: StreamWriter) -> dict:
     reason = f"No documents (distance {best:.3f} > {threshold})." if best is not None else "No matching document chunks."
     _emit(writer, state, type="decision", branch=b, summary=f"{reason} Falling back to the web.")
     _emit(writer, state, type="tool_call", tool="web_search", input=sq[:200], branch=b, summary="Searching the web via MCP.")
-    try:
-        res = await _call("web_search", query=sq)
-        wsources = [_src(s) for s in res.get("sources", [])]
-        wsummary = str(res.get("summary", ""))
-    except Exception as e:  # noqa: BLE001
-        wsources, wsummary = [], f"Web search unavailable ({_safe(e)})."
+    wsources, wsummary = [], ""
+    for _attempt in range(2):  # Tavily occasionally returns nothing on a first try
+        try:
+            res = await _call("web_search", query=sq)
+            wsources = [_src(s) for s in res.get("sources", [])]
+            wsummary = str(res.get("summary", ""))
+        except Exception as e:  # noqa: BLE001
+            wsources, wsummary = [], f"Web search unavailable ({_safe(e)})."
+        if wsources or not settings.web_search_configured:
+            break
     _emit(writer, state, type="tool_result", tool="web_search", summary=wsummary, branch=b,
           links=[{"title": s.label, "url": s.detail} for s in wsources])
     return {"branches": [{"branch": b, "subquery": sq, "sources": wsources, "best": best, "web": True}]}

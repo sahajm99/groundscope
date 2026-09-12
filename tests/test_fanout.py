@@ -10,7 +10,7 @@ from tests.test_graph import DOC, WEB, FakeBus, _patch, run  # noqa: F401  (auto
 
 
 def _plan(subqueries):
-    return lambda s, u: {"route": "knowledge", "subqueries": subqueries}
+    return lambda s, u, **kw: {"route": "knowledge", "subqueries": subqueries}
 
 
 async def test_multi_part_question_fans_out_with_branch_ids(monkeypatch):
@@ -59,7 +59,7 @@ async def test_cap_at_three_subqueries(monkeypatch):
 
 
 async def test_bad_decomposition_falls_back_to_the_question(monkeypatch):
-    def boom(s, u):
+    def boom(s, u, **kw):
         raise ValueError("bad json")
 
     monkeypatch.setattr(graph, "complete_json", boom)
@@ -67,7 +67,7 @@ async def test_bad_decomposition_falls_back_to_the_question(monkeypatch):
     events, _ = await run("q", bus, monkeypatch)
     assert [c[1]["query"] for c in bus.calls] == ["q"]
 
-    monkeypatch.setattr(graph, "complete_json", lambda s, u: {"route": "knowledge", "subqueries": ["", 7, None]})
+    monkeypatch.setattr(graph, "complete_json", lambda s, u, **kw: {"route": "knowledge", "subqueries": ["", 7, None]})
     bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.2, "sources": [DOC]}})
     events, _ = await run("q2", bus, monkeypatch)
     assert [c[1]["query"] for c in bus.calls] == ["q2"]
@@ -167,3 +167,32 @@ async def test_aggregate_interleaves_branches_so_each_branch_keeps_its_top_hits(
     user = captured["user"]
     assert "A0" in user and "B0" in user and "A1" in user and "B1" in user
     assert "A2" not in user and "B2" not in user
+
+
+async def test_empty_web_results_are_retried_once(monkeypatch):
+    """Tavily occasionally returns zero results on a first try; one retry avoids a false refusal."""
+    monkeypatch.setattr(graph, "complete_json", _plan(["webq"]))
+    calls = {"n": 0}
+
+    def ws(**kw):
+        calls["n"] += 1
+        return {"summary": "No web results found.", "configured": True, "sources": [] if calls["n"] == 1 else [WEB]}
+
+    bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.9, "sources": [DOC]}, "web_search": ws})
+    _, answer = await run("webq", bus, monkeypatch)
+    assert calls["n"] == 2
+    assert answer["citations"][0]["kind"] == "web"
+
+
+async def test_planner_gives_the_model_room_for_its_json(monkeypatch):
+    """gpt-oss spends completion tokens on reasoning; 300 tokens truncated the plan JSON."""
+    seen = {}
+
+    def spy(system, user, **kw):
+        seen.update(kw)
+        return {"route": "knowledge", "subqueries": []}
+
+    monkeypatch.setattr(graph, "complete_json", spy)
+    bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.2, "sources": [DOC]}})
+    await run("a plain question about Tailwind", bus, monkeypatch)
+    assert seen.get("max_tokens", 0) >= 600

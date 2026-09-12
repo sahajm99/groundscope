@@ -34,7 +34,7 @@ def _patch(monkeypatch):
     monkeypatch.setattr(graph, "_embed", lambda text: [0.0])
     monkeypatch.setattr(graph.settings, "tavily_api_key", "x")
     monkeypatch.setattr(graph, "complete", lambda system, user, **kw: "ANSWER [sample.txt p.1]")
-    monkeypatch.setattr(graph, "complete_json", lambda system, user: {"route": "knowledge", "subqueries": []})
+    monkeypatch.setattr(graph, "complete_json", lambda system, user, **kw: {"route": "knowledge", "subqueries": []})
     graph._graph = None
 
 
@@ -144,7 +144,7 @@ async def test_planner_lists_only_action_tools_not_web_search(monkeypatch):
     sent plain factual questions to the ReAct worker instead of the grounded knowledge path."""
     seen = {}
 
-    def fake_json(system, user):
+    def fake_json(system, user, **kw):
         seen["system"] = system
         return {"route": "knowledge", "subqueries": []}
 
@@ -176,7 +176,7 @@ class FakeChat:
 
 async def test_tool_worker_synthesizes_a_final_answer_when_rounds_run_out(monkeypatch):
     log = []
-    monkeypatch.setattr(graph, "complete_json", lambda s, u: {"route": "tools", "subqueries": []})
+    monkeypatch.setattr(graph, "complete_json", lambda s, u, **kw: {"route": "tools", "subqueries": []})
     monkeypatch.setattr(graph, "_chat_model", lambda tools, model: FakeChat(tools, model, log))
     bus = FakeBus({})
     bus.open_tools = lambda: [_tool("calculator")]
@@ -188,7 +188,7 @@ async def test_tool_worker_synthesizes_a_final_answer_when_rounds_run_out(monkey
 
 async def test_tool_worker_fails_over_to_the_fallback_model(monkeypatch):
     log = []
-    monkeypatch.setattr(graph, "complete_json", lambda s, u: {"route": "tools", "subqueries": []})
+    monkeypatch.setattr(graph, "complete_json", lambda s, u, **kw: {"route": "tools", "subqueries": []})
     monkeypatch.setattr(graph, "_chat_model",
                         lambda tools, model: FakeChat(tools, model, log, fail_model=graph.settings.llm_model))
     bus = FakeBus({})
@@ -241,7 +241,7 @@ def test_explicit_multi_question_input_is_split_without_the_llm():
 async def test_planner_uses_the_deterministic_split(monkeypatch):
     calls = {"llm": 0}
 
-    def fake_json(system, user):
+    def fake_json(system, user, **kw):
         calls["llm"] += 1
         return {"route": "knowledge", "subqueries": []}
 
