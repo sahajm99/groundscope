@@ -2,12 +2,13 @@
 
 # Groundscope
 
-A **$0, open, runnable agent harness**: the orchestration, tool bus, observability, evals,
-and ops that turn an LLM into a reliable agent. Grounded question-answering is the
-demonstration workload. Upload a document (or use the seeded corpus), ask a question, and
-**watch the agent think** in real time: it splits the question into parallel sub-queries,
-grounds each in your documents or falls back to the web, merges the evidence, and answers
-with citations, or refuses rather than hallucinate.
+Groundscope is a $0, open agent harness that answers questions with citations to real
+sources, your documents, connected data, and the web, or refuses. The planner splits a
+question into parallel branches, every branch grounds through one pluggable MCP tool bus
+with tenant scoping the model cannot touch, and a golden-set eval gate in CI turns a change
+red when answers stop being grounded. It is the public, free-tier twin of the Jarvis agent
+architecture. The grounded, cited answer is the product; the harness is what makes it
+trustworthy.
 
 Live: https://groundscope.onrender.com · Design: `docs/v2-agentic-design.md` · Roadmap: `docs/v2-roadmap.md`
 

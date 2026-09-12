@@ -12,17 +12,20 @@ Groundscope v2 is an **agent harness**: the machinery that wraps a raw LLM and t
 it into a reliable, observable, operable agent — orchestration, a uniform tool layer,
 control & safety, observability, quality gates, and operations.
 
-**Grounded question-answering is the *demonstration workload*, not the product.** RAG
-is the task we run *through* the harness to exercise every layer. This is a deliberate
-stance: answer quality is bounded on purpose so the harness — not the answer — is what
-a reviewer judges. A better answer engine is not the goal; a credible, runnable piece
-of **agent infrastructure** is.
+**The grounded, cited answer is the product; the harness is what makes it trustworthy.**
+(Revised 2026-09-12: an earlier draft called answer quality "bounded on purpose"; that is
+withdrawn. Groundscope should answer like a search engine's AI mode, with reference links,
+and refuse when it cannot ground.)
 
 Positioning (public, task-first):
 
-> *Groundscope is a $0, open, runnable agent harness — the orchestration, tools,
-> observability, evals, and ops that turn an LLM into a reliable agent. The grounded
-> Q&A demo is just the workload that exercises it.*
+> *Groundscope is a $0, open agent harness that answers questions with citations to real
+> sources, your documents, connected data, and the web, or refuses. The planner splits a
+> question into parallel branches, every branch grounds through one pluggable MCP tool bus
+> with tenant scoping the model cannot touch, and a golden-set eval gate in CI turns a change
+> red when answers stop being grounded. It is the public, free-tier twin of the Jarvis agent
+> architecture. The grounded, cited answer is the product; the harness is what makes it
+> trustworthy.*
 
 ---
 
