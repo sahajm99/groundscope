@@ -19,3 +19,7 @@ data/uploads/
 
 # OS
 .DS_Store
+
+# Tooling / eval output
+.ruff_cache/
+eval-report.json

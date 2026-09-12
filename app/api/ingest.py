@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Request, Response, UploadFile, File, HTTPException
+from fastapi import APIRouter, File, HTTPException, Request, Response, UploadFile
 
+from app import sessions, storage
 from app.config import settings
 from app.ingestion.chunker import chunk_pages
 from app.ingestion.embedder import get_embedder
-from app.ingestion.extract import extract_pages, NoTextError
-from app import sessions, storage
+from app.ingestion.extract import NoTextError, extract_pages
 
 router = APIRouter()
 
@@ -33,7 +33,7 @@ async def ingest(request: Request, response: Response, file: UploadFile = File(.
     try:
         pages = extract_pages(data, file.filename or "upload")
     except NoTextError as e:
-        raise HTTPException(422, str(e))
+        raise HTTPException(422, str(e)) from e
 
     if len(pages) > settings.max_pages:
         raise HTTPException(413, f"Too many pages (max {settings.max_pages}).")

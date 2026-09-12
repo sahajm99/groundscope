@@ -7,8 +7,8 @@ show the same thing.
 
 from __future__ import annotations
 
-from app.config import settings
 from app.agent.trace import TraceEvent
+from app.config import settings
 
 
 class _NullTrace:

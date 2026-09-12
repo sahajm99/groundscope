@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import ast
 import operator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from mcp.server.fastmcp import FastMCP
 
@@ -44,7 +44,7 @@ def calculator(expression: str) -> str:
 @mcp.tool()
 def current_datetime() -> str:
     """Return the current UTC date and time in ISO-8601 format."""
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 if __name__ == "__main__":

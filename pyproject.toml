@@ -1,0 +1,21 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [".venv", "data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "B008", "UP035", "UP045", "UP037"]
+
+[tool.pyright]
+include = ["app", "mcp_servers", "evals", "tests", "scripts"]
+exclude = [".venv", "**/__pycache__"]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "basic"
+reportMissingImports = "error"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = ["integration: needs the pgvector test database", "llm: needs an LLM key (and web key)"]
+testpaths = ["tests"]

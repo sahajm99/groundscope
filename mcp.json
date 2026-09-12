@@ -1,4 +1,15 @@
 {
+  "groundscope-retrieval": {
+    "command": "python",
+    "args": ["mcp_servers/retrieval_server.py"],
+    "transport": "stdio",
+    "keepalive": true
+  },
+  "groundscope-web": {
+    "command": "python",
+    "args": ["mcp_servers/web_server.py"],
+    "transport": "stdio"
+  },
   "groundscope-utils": {
     "command": "python",
     "args": ["mcp_servers/util_server.py"],

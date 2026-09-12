@@ -84,7 +84,7 @@ class Hit:
     text: str
     file_name: str
     page_number: int
-    distance: float  # cosine distance: lower = closer
+    distance: float | None  # best cosine distance of the fused set (lower = closer); None if no dense hits
 
 
 def add_document(

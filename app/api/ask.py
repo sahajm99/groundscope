@@ -12,9 +12,9 @@ import json
 from fastapi import APIRouter, Request, Response
 from sse_starlette.sse import EventSourceResponse
 
+from app import sessions
 from app.agent.loop import run_agent
 from app.config import settings
-from app import sessions
 
 
 def _engine():
