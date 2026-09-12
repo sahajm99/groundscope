@@ -373,7 +373,9 @@ async def synth_node(state: S, writer: StreamWriter) -> dict:
         for s in collected[:MAX_SOURCES]
     )
     # temperature 0: the smoke and eval gates need repeatable synthesis
-    ans = await asyncio.to_thread(complete, _SYNTH_SYS, f"QUESTION:\n{state['question']}\n\nSOURCES:\n{block}", 0.0)
+    ans = await asyncio.to_thread(
+        lambda: complete(_SYNTH_SYS, f"QUESTION:\n{state['question']}\n\nSOURCES:\n{block}", temperature=0.0)
+    )
     if ans.strip().startswith(REFUSAL_PREFIX):
         # The model judged the sources insufficient: show no citations for a non-answer.
         _emit(writer, state, type="refusal", summary="Sources did not contain the answer; refused rather than guess.")
