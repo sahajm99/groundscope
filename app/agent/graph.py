@@ -35,6 +35,8 @@ from app.ingestion.embedder import get_embedder
 
 log = logging.getLogger(__name__)
 
+REFUSAL_PREFIX = "I can't ground an answer to that"
+
 __all__ = ["run_agent_graph", "run_agent_graph_full", "get_bus", "ToolError", "ToolUnavailable"]
 
 
@@ -307,6 +309,11 @@ def synth_node(state: S, writer: StreamWriter) -> dict:
         f"[{s.label}{(' - ' + s.detail) if s.kind == 'web' else ''}]\n{s.text[:1200]}" for s in collected
     )
     ans = complete(_SYNTH_SYS, f"QUESTION:\n{state['question']}\n\nSOURCES:\n{block}")
+    if ans.strip().startswith(REFUSAL_PREFIX):
+        # The model judged the sources insufficient: show no citations for a non-answer.
+        _emit(writer, state, type="refusal", summary="Sources did not contain the answer; refused rather than guess.")
+        writer({"kind": "answer", "payload": {"answer": ans, "citations": []}})
+        return {"answer": ans, "citations": []}
     _emit(writer, state, type="synthesis", summary="Synthesized a grounded answer.")
     citations = [{"label": s.label, "kind": s.kind, "detail": s.detail} for s in collected]
     writer({"kind": "answer", "payload": {"answer": ans, "citations": citations}})

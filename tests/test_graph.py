@@ -116,3 +116,15 @@ async def test_steps_are_renumbered_monotonically(monkeypatch):
     bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "1 chunk", "score": 0.2, "sources": [DOC]}})
     events, _ = await run("q", bus, monkeypatch)
     assert [e["step"] for e in events] == list(range(1, len(events) + 1))
+
+
+async def test_refusal_answer_carries_no_citations(monkeypatch):
+    """If the model answers with the refusal sentence, the sources it declined to use must
+    not be shown as citations (found by /qa: a refusal listed junk web links as sources)."""
+    monkeypatch.setattr(graph, "complete", lambda system, user, **kw: "I can't ground an answer to that in your documents or the web.")
+    bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "1 chunk", "score": 0.9, "sources": [DOC]},
+                   "web_search": lambda **kw: {"summary": "1 web results", "configured": True, "sources": [WEB]}})
+    events, answer = await run("xxxxxxxx", bus, monkeypatch)
+    assert answer["answer"].startswith("I can't ground an answer")
+    assert answer["citations"] == []
+    assert any(e["type"] == "refusal" for e in events)
