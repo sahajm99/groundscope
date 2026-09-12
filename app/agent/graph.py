@@ -155,6 +155,18 @@ _PLAN_SYS = (
 )
 
 
+def split_questions(question: str) -> list[str]:
+    """Deterministic decomposition for input that is explicitly several questions
+    ("...called? Who is...?"). Returns [] unless there are at least two real question
+    clauses (4+ words each); capped at settings.max_subqueries. Funnel principle: the
+    obvious case never depends on which model tier the planner happens to run on."""
+    parts = [p.strip() for p in question.split("?") if p.strip()]
+    clauses = [p + "?" for p in parts if len(p.split()) >= 4]
+    if len(clauses) < 2 or len(clauses) != len(parts):
+        return []
+    return clauses[: settings.max_subqueries]
+
+
 def _clean_subqueries(raw: Any, question: str, cap: int) -> list[str]:
     if not isinstance(raw, list):
         return [question]
@@ -168,8 +180,11 @@ def _clean_subqueries(raw: Any, question: str, cap: int) -> list[str]:
 async def planner_node(state: S, writer: StreamWriter) -> dict:
     q = state["question"]
     route, subqueries = "knowledge", [q]
+    explicit = split_questions(q)
     if is_metadata(q):
         route = "metadata"
+    elif explicit:
+        subqueries = explicit  # no model call needed for an explicitly multi-question input
     else:
         try:
             open_tools = (await get_bus()).open_tools()

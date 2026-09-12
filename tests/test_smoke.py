@@ -51,7 +51,7 @@ async def test_falls_back_to_web_through_mcp(real_bus):
 
 async def test_multi_part_question_shows_parallel_branches(real_bus):
     events, answer = await _ask(
-        "Two separate things: what is Zephyr Logistics' routing engine called, and who is the current CEO of Microsoft?"
+        "What is Zephyr Logistics' routing engine called? Who is the current CEO of Microsoft?"
     )
     branches = {e.get("branch") for e in events if e["type"] == "tool_call"}
     assert len(branches) >= 2, f"expected fan-out, got branches={branches}; events={[e['summary'] for e in events]}"

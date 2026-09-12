@@ -102,3 +102,15 @@ Resumed sessions: read this, then `docs/DECISIONS.md` and `docs/BLOCKED.md`, the
 - All three regressions reverted (commits `test(ci): ...` and their reverts).
 - Final branch CI green (after the multi-part synthesis fix and temperature 0):
   https://github.com/sahajm99/groundscope/actions/runs/34704978970
+
+## Phase 5: shipped (2026-09-12)
+- PR #1 merged to main (merge commit 574496e); Render served v2 within ~2 min: `/health` lists
+  all three MCP servers, `db_reachable: true`.
+- Live check: retrieval and web search work on Render (Zephyr chunk at distance 0.149, four
+  web results), but synthesis fails with `NotFoundError`: the Render dashboard still carries
+  the retired Llama model names, which override render.yaml. Needs `LLM_MODEL`,
+  `LLM_FALLBACK_MODEL` (and `GEMINI_API_KEY`) set in the Render dashboard.
+- The first main run failed on the multi-part smoke test: under quota pressure the planner
+  ran on the weakest tier and did not split a two-part question. Hotfix on main:
+  `split_questions()` decomposes explicit multi-question input deterministically (no model
+  call); the smoke question is phrased as two questions.

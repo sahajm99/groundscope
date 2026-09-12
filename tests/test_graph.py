@@ -224,3 +224,29 @@ async def test_citations_carry_a_snippet_and_a_stable_shape(monkeypatch):
     c = answer["citations"][0]
     assert c["kind"] == "web" and c["label"] == "T" and c["detail"] == "https://u"
     assert c["snippet"].startswith("Satya Nadella has been CEO") and len(c["snippet"]) <= 200
+
+
+def test_explicit_multi_question_input_is_split_without_the_llm():
+    """Funnel principle: two explicit questions never depend on the planner model splitting them."""
+    q = "What is Zephyr Logistics' routing engine called? Who is the current CEO of Microsoft?"
+    assert graph.split_questions(q) == [
+        "What is Zephyr Logistics' routing engine called?",
+        "Who is the current CEO of Microsoft?",
+    ]
+    assert graph.split_questions("What is Tailwind?") == []
+    assert graph.split_questions("Why? What is Tailwind?") == []  # fragments do not count
+    assert len(graph.split_questions("A b c d? E f g h? I j k l? M n o p?")) == 3  # capped
+
+
+async def test_planner_uses_the_deterministic_split(monkeypatch):
+    calls = {"llm": 0}
+
+    def fake_json(system, user):
+        calls["llm"] += 1
+        return {"route": "knowledge", "subqueries": []}
+
+    monkeypatch.setattr(graph, "complete_json", fake_json)
+    bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.2, "sources": [DOC]}})
+    events, _ = await run("What is Zephyr's routing engine called? Who is the CEO of Microsoft?", bus, monkeypatch)
+    assert calls["llm"] == 0
+    assert {e["branch"] for e in events if e["type"] == "tool_call"} == {0, 1}
