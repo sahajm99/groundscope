@@ -38,7 +38,7 @@ log = logging.getLogger(__name__)
 REFUSAL_PREFIX = "I can't ground an answer to that"
 KNOWLEDGE_PATH_TOOLS = frozenset({"web_search"})  # invoked by the graph, never offered as an "action"
 SOURCE_CHARS = 2600  # a 400-word chunk is ~2,500 chars; never cut a chunk in half
-MAX_SOURCES = 6  # ~4K tokens of sources: fits the free-tier per-minute cap; branches merged round-robin
+MAX_SOURCES = 1  # DELIBERATE REGRESSION (to be reverted): recall collapses, only the golden set can see it
 MAX_TOOL_CALLS_PER_ROUND = 4  # one model reply cannot fan out 50 tool calls
 LLM_TIMEOUT_S = 60.0  # a stalled provider must not hold a thread for the client's default 10 minutes
 
