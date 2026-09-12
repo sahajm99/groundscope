@@ -42,6 +42,9 @@ Nothing is blocked as of 2026-09-12 15:20 UTC.
 - Main runs 34707065998 (one flaky web case, fixed in 2def8d4) and 34707733909 (quota) are red.
   The per-minute/per-day 429 fix is committed; it will be pushed and the main run re-run once
   the budgets return (Gemini 07:00 UTC; the bulk of the Groq tokens from ~12:00 UTC on).
+- Cerebras tried 2026-09-12 18:45 UTC: the key is valid but the account is on PayGo; every
+  model (`gpt-oss-120b`, `qwen-3.8-27b`) returns 402 Payment Required. Not usable under the
+  free-tier rule unless the Billing tab offers a free plan. The `.env` lines are commented out.
 - Capacity option (needs you): a free Cerebras key (cloud.cerebras.ai; 1M tokens/day, hosts
   `gpt-oss-120b`, OpenAI-compatible) as the second-provider tier (`LLM_FALLBACK_BASE_URL`,
   `LLM_FALLBACK_API_KEY`) would give five times today's total budget and keep CI runs from
