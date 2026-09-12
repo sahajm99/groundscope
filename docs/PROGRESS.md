@@ -100,3 +100,5 @@ Resumed sessions: read this, then `docs/DECISIONS.md` and `docs/BLOCKED.md`, the
   on Gemini): deterministic checks 8/8, hard failures 0, **faithfulness 0.73 < 0.85 -> FAIL**.
   Report: `docs/eval-report-regressed-prompt.json`. Only the LLM judge can see this one.
 - All three regressions reverted (commits `test(ci): ...` and their reverts).
+- Final branch CI green (after the multi-part synthesis fix and temperature 0):
+  https://github.com/sahajm99/groundscope/actions/runs/34704978970
