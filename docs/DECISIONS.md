@@ -1,0 +1,21 @@
+# v2.0 decisions log
+
+One line of rationale each. Made autonomously on 2026-09-12 per the mission brief.
+
+| # | Decision | Rationale |
+|---|---|---|
+| 1 | Eval framework: custom Groq judge (not Ragas/DeepEval) | Ragas 0.4.3 requires `langchain` 1.x, incompatible with pinned `langchain-core==0.3.86`; older Ragas and DeepEval 4.x drag large dependency trees against a pinned set we must not upgrade. The three metric definitions fit in ~150 lines using the existing tiered router. Decided in <10 min via `pip install --dry-run`. |
+| 2 | CI runs against a `pgvector/pgvector:pg16` service container seeded with `data/sample.txt` | Hermetic and free; the Supabase free project pauses on idle (it is paused right now), so CI must not depend on it. |
+| 3 | Retrieval MCP server accepts an optional precomputed `query_embedding` | Render free tier is 512 MB; a second in-process copy of bge-small (~230 MB) in the subprocess risks OOM. The orchestrator passes the vector; external callers omit it and the server embeds lazily. |
+| 4 | Per-call stdio MCP sessions (adapter default) rather than persistent sessions | Simplest lifecycle; same behavior the utils server already has in prod. Persistent sessions are a measured follow-up if Render latency is poor. |
+| 5 | Per-branch corrective gate inside `retrieval_worker` (doc → web per sub-query) | Makes the roadmap's own example ("X in doc A and Y on the web") actually produce mixed doc+web grounding in parallel; the global gate value is untouched. |
+| 6 | Tool errors degrade to "no chunks" → web fallback instead of failing the request | The live demo must keep answering web questions while the DB is paused; also the HLD's "tool error degrades gracefully" requirement. |
+| 7 | Typecheck with pyright (basic) rather than mypy | Faster, better inference on untyped code; pip-installable (bundles node via nodeenv). |
+| 8 | Fan-out cap 3, relevance threshold untouched | Standing decisions from the mission brief. |
+| 9 | Persistent (keep-alive) stdio session for `groundscope-retrieval`; per-call sessions for web/utils | Review finding: per-call spawns import numpy+psycopg (~70 MB, seconds on 0.1 CPU) and a 3-way fan-out would spawn three at once. One long-lived retrieval child keeps fan-out concurrent and cheap; web/utils are rare and light, so per-call is fine. Flagged in mcp.json as `"keepalive": true` (stripped before the adapter sees it). |
+| 10 | Judge = single combined call per case on `llama-3.1-8b-instant` (configurable `EVAL_JUDGE_MODEL`), paced | Groq free tier caps 70B at ~100K tokens/day; the agent already spends that. A separate, larger-budget judge model also avoids self-preference. |
+| 11 | CI corpus = `data/corpus/*.txt` (fictional companies, ~15 chunks) seeded by `scripts/seed.py` | Review finding: `sample.txt` is one chunk, too thin for 15+ grounded cases and for context precision. Fictional facts keep `expect_grounded` meaningful (the web cannot answer them). |
+| 12 | Trace never shows raw exception text from tools; only the exception type | psycopg errors include the DB host and user; the panel is public. Full text goes to the server log. |
+| 13 | Trace panel builds DOM with `textContent` (no `innerHTML` for tool output or link titles) | Stored-XSS risk once summaries carry tool output and Tavily titles. In blast radius, fixed with the lane renderer. |
+| 14 | Per-branch tool timeout (`tool_timeout_s`, default 60) | One hung MCP call would hang the whole fan-out and the SSE stream. |
+| 15 | Execution mode: tightly coupled graph/bus tasks inline (executing-plans); isolated tasks (UI lanes, golden set, CI yaml) via subagents | Subagents lose the langgraph 0.2.39 / mcp adapter details that the review surfaced; the isolated pieces do not need them. |
