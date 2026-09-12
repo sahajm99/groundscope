@@ -1,0 +1,81 @@
+name: ci
+
+on:
+  push:
+    branches: [main]   # PR commits run once (pull_request); two parallel runs share one free-tier quota
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: lint, typecheck, tests, evals
+    runs-on: ubuntu-latest
+    services:
+      pg:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: gs
+          POSTGRES_PASSWORD: gs
+          POSTGRES_DB: groundscope
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U gs"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: "true"
+      DATABASE_URL: postgresql://gs:gs@localhost:5433/groundscope
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      LLM_BASE_URL: https://api.groq.com/openai/v1
+      LLM_MODEL: openai/gpt-oss-120b
+      LLM_FALLBACK_MODEL: openai/gpt-oss-20b
+      EVAL_JUDGE_MODEL: qwen/qwen3.8-27b
+      AGENT_ENGINE: langgraph
+      RELEVANCE_DISTANCE_THRESHOLD: "0.5"
+      FASTEMBED_CACHE_PATH: /home/runner/.cache/fastembed
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: cache embedding model
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/fastembed
+          key: fastembed-bge-small-en-v1.5-v1
+      - name: install
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: lint
+        run: ruff check .
+      - name: typecheck
+        run: pyright
+      - name: seed the corpus
+        run: python -m scripts.seed data/sample.txt data/corpus/zephyr-logistics.txt data/corpus/halcyon-robotics.txt data/corpus/meridian-health.txt
+      - name: tests (unit + integration + smoke)
+        run: pytest -q
+      - name: evals (quality gate)
+        run: python -m evals.run_evals --report eval-report.json --pace 8   # free-tier per-minute caps
+      - name: upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: eval-report.json
+          if-no-files-found: ignore
+
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t groundscope .

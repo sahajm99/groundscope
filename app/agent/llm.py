@@ -44,12 +44,46 @@ class _Breaker:
 _breaker = _Breaker(settings.breaker_threshold, settings.breaker_cooldown_s)
 _clients: dict = {}
 
+# Per-endpoint request throttle. Gemini's free tier allows 15 requests/minute; when both
+# Groq tiers are out of daily budget the whole agent plus the eval judge fall through to it,
+# so the client itself must stay under the cap instead of collecting 429s.
+_throttles: dict[str, list[float]] = {}
+_RPM_CAPS = {"generativelanguage.googleapis.com": 12}
+RATE_LIMIT_RETRY_PAUSE_S = 35.0
+
+
+def _rpm_cap(base_url: str) -> int | None:
+    for host, cap in _RPM_CAPS.items():
+        if host in base_url:
+            return cap
+    return None
+
+
+def _throttle(base_url: str, cap: int) -> None:
+    """Block until fewer than `cap` requests were started on this endpoint in the last minute."""
+    now = time.monotonic()
+    stamps = [t for t in _throttles.get(base_url, []) if now - t < 60.0]
+    if len(stamps) >= cap:
+        wait = 60.0 - (now - stamps[0]) + 0.5
+        if wait > 0:
+            time.sleep(wait)
+        now = time.monotonic()
+        stamps = [t for t in stamps if now - t < 60.0]
+    stamps.append(now)
+    _throttles[base_url] = stamps
+
+
+def _is_rate_limit(e: BaseException) -> bool:
+    s = f"{type(e).__name__} {e}".lower()
+    return "429" in s or "rate limit" in s or "ratelimit" in s or "resource_exhausted" in s
+
 
 def _client(base_url: str, api_key: str):
     if base_url not in _clients:
         from openai import OpenAI
 
-        c = OpenAI(api_key=api_key, base_url=base_url)
+        # A stalled provider must not hold a worker thread for the client's default 600 s.
+        c = OpenAI(api_key=api_key, base_url=base_url, timeout=60.0, max_retries=1)
         if os.getenv("LANGSMITH_TRACING", "").lower() == "true" and os.getenv("LANGSMITH_API_KEY"):
             try:
                 from langsmith.wrappers import wrap_openai
@@ -68,34 +102,83 @@ def _tiers() -> list[tuple[str, str, str]]:
     if settings.llm_fallback_api_key and settings.llm_fallback_base_url:
         tiers.append((settings.llm_fallback_model or settings.llm_model,
                       settings.llm_fallback_base_url, settings.llm_fallback_api_key))
+    if settings.gemini_api_key:
+        tiers.append((settings.gemini_model, settings.gemini_base_url, settings.gemini_api_key))
     return tiers
 
 
-def complete(system: str, user: str, temperature: float = 0.2, max_tokens: int = 700) -> str:
+def complete_ex(
+    system: str, user: str, temperature: float = 0.2, max_tokens: int = 700,
+    model: str | None = None, strict_model: bool = False,
+    base_url: str | None = None, api_key: str | None = None,
+) -> tuple[str, str]:
+    """Route through the tiers; return (text, model that answered).
+
+    An explicit `model` (e.g. the eval judge) becomes the first tier, on `base_url`/`api_key`
+    when given (a different provider) or on the primary provider otherwise, with the
+    configured tiers as fallbacks; `strict_model=True` disables the fallbacks so a judge can
+    never silently become the agent model."""
     tiers = _tiers()
-    start = 1 if (_breaker.is_open() and len(tiers) > 1) else 0
+    if model:
+        tiers = [(model, base_url or settings.llm_base_url, api_key or settings.llm_api_key)]
+        if not strict_model:
+            tiers += [t for t in _tiers() if t[0] != model]
+    start = 1 if (_breaker.is_open() and len(tiers) > 1 and not model) else 0
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     last_err: Exception | None = None
     for i in range(start, len(tiers)):
-        model, base, key = tiers[i]
-        try:
-            resp = _client(base, key).chat.completions.create(
-                model=model, temperature=temperature, max_tokens=max_tokens, messages=messages,
-            )
-            if i == 0:
-                _breaker.record_success()
-            return (resp.choices[0].message.content or "").strip()
-        except Exception as e:  # noqa: BLE001
-            last_err = e
-            if i == 0:
-                _breaker.record_failure()
-            continue
+        tier_model, base, key = tiers[i]
+        is_last = i == len(tiers) - 1
+        for attempt in range(2):
+            cap = _rpm_cap(base)
+            if cap:
+                _throttle(base, cap)
+            try:
+                resp = _client(base, key).chat.completions.create(
+                    model=tier_model, temperature=temperature, max_tokens=max_tokens, messages=messages,
+                )
+                if i == 0 and not model:
+                    _breaker.record_success()
+                return (resp.choices[0].message.content or "").strip(), tier_model
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                if i == 0 and not model:
+                    _breaker.record_failure()
+                # The last tier gets one more try after a rate-limit window; earlier tiers
+                # fail over immediately instead of waiting.
+                if is_last and attempt == 0 and _is_rate_limit(e):
+                    time.sleep(RATE_LIMIT_RETRY_PAUSE_S)
+                    continue
+                break
     raise last_err if last_err else RuntimeError("no LLM tier available")
 
 
-def complete_json(system: str, user: str) -> dict:
+def complete(
+    system: str, user: str, temperature: float = 0.2, max_tokens: int = 700,
+    model: str | None = None, strict_model: bool = False,
+) -> str:
+    return complete_ex(system, user, temperature, max_tokens, model=model, strict_model=strict_model)[0]
+
+
+def complete_json(
+    system: str, user: str, model: str | None = None, max_tokens: int = 300, strict_model: bool = False
+) -> dict:
     """Ask for a JSON object back; tolerate fenced code blocks."""
-    raw = complete(system + "\nRespond ONLY with a JSON object.", user, temperature=0.0, max_tokens=300).strip()
+    return complete_json_ex(system, user, model=model, max_tokens=max_tokens, strict_model=strict_model)[0]
+
+
+def complete_json_ex(
+    system: str, user: str, model: str | None = None, max_tokens: int = 300, strict_model: bool = False,
+    base_url: str | None = None, api_key: str | None = None,
+) -> tuple[dict, str]:
+    """complete_json plus the model that answered."""
+    raw, used = complete_ex(system + "\nRespond ONLY with a JSON object.", user, temperature=0.0,
+                            max_tokens=max_tokens, model=model, strict_model=strict_model,
+                            base_url=base_url, api_key=api_key)
+    return _parse_json(raw.strip()), used
+
+
+def _parse_json(raw: str) -> dict:
     if raw.startswith("```"):
         raw = raw.split("```")[1].lstrip("json").strip()
     try:

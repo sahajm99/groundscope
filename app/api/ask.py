@@ -7,14 +7,15 @@ live panel as they arrive — the "watch it think" moment.
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from fastapi import APIRouter, Request, Response
 from sse_starlette.sse import EventSourceResponse
 
+from app import sessions
 from app.agent.loop import run_agent
 from app.config import settings
-from app import sessions
 
 
 def _engine():
@@ -26,11 +27,18 @@ def _engine():
 
 router = APIRouter()
 
+# Global in-flight cap: each question can fan out into 3 branches (DB, LLM, web, child
+# processes); an unbounded number of them on a 512 MB host takes everyone down.
+_inflight = asyncio.Semaphore(settings.max_concurrent_questions)
+
 
 @router.post("/ask")
 async def ask(request: Request, response: Response):
     if not settings.llm_configured:
         return Response("The agent isn't configured yet (no LLM key).", status_code=503)
+    if _inflight.locked():
+        return Response("The agent is busy with other questions right now. Try again in a moment.",
+                        status_code=503, headers={"Retry-After": "10"})
 
     sid = sessions.get_or_create_session(request, response)
     ip = sessions.client_ip(request)
@@ -45,6 +53,7 @@ async def ask(request: Request, response: Response):
         return Response("Ask a question (under 500 characters).", status_code=400)
 
     agent = _engine()
+    await _inflight.acquire()
 
     async def event_stream():
         try:
@@ -54,6 +63,8 @@ async def ask(request: Request, response: Response):
             yield {"event": "answer", "data": json.dumps(
                 {"answer": f"Something went wrong generating the answer ({type(e).__name__}).", "citations": []}
             )}
+        finally:
+            _inflight.release()
 
     # set-cookie from get_or_create_session must ride on the streaming response
     return EventSourceResponse(event_stream(), headers=dict(response.headers))

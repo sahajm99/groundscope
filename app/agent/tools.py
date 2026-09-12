@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app import storage
 from app.config import settings
 from app.ingestion.embedder import get_embedder
-from app import storage
 
 try:
-    from langsmith import traceable
+    from langsmith import traceable  # type: ignore[assignment]
 except ImportError:  # langsmith optional
     def traceable(**_kwargs):
         def deco(fn):

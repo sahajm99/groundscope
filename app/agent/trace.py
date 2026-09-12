@@ -1,5 +1,5 @@
 """The single trace-event schema, consumed by BOTH the live SSE panel and
-Langfuse. One shape so the two observability layers never drift.
+LangSmith. One shape so the two observability layers never drift.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ class TraceEvent:
     ms: int = 0
     links: Optional[list] = None    # [{title, url}] for web_search results
     preview: Optional[str] = None   # snippet of the top retrieved chunk (vector_search)
+    branch: Optional[int] = None    # fan-out worker index (None outside a parallel branch)
 
     def to_dict(self) -> dict:
         return asdict(self)

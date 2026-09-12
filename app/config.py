@@ -13,12 +13,18 @@ class Settings(BaseSettings):
     # LLM (agent brain) — OpenAI-compatible
     llm_api_key: str = ""
     llm_base_url: str = "https://api.groq.com/openai/v1"
-    llm_model: str = "llama-3.3-70b-versatile"
+    llm_model: str = "openai/gpt-oss-120b"
     # Model router / failover (tiered): primary -> smaller same-provider model ->
     # optional second provider (set fallback api key + base url, e.g. Gemini).
-    llm_fallback_model: str = "llama-3.1-8b-instant"
+    llm_fallback_model: str = "openai/gpt-oss-20b"
     llm_fallback_api_key: str = ""
     llm_fallback_base_url: str = ""
+    # Optional Google Gemini (free tier) via its OpenAI-compatible endpoint: third failover
+    # tier for the agent and the eval judge (separate quota + different vendor).
+    gemini_api_key: str = ""
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_judge_model: str = "gemini-3.5-flash-lite"
     # Circuit breaker
     breaker_threshold: int = 5
     breaker_cooldown_s: int = 60
@@ -50,12 +56,16 @@ class Settings(BaseSettings):
     max_upload_mb: int = 10
     max_pages: int = 120
     rate_limit_per_min: int = 12
+    max_concurrent_questions: int = 4  # global in-flight cap for /ask (512 MB host, 3-way fan-out)
     global_daily_cap: int = 500
 
     # Agent
     max_tool_rounds: int = 2
     relevance_distance_threshold: float = 0.5  # calibrated for bge-small: relevant ~0.44, irrelevant ~0.61
     agent_engine: str = "langgraph"  # "langgraph" (verified, nested LangSmith traces) | "loop" (fallback)
+    max_subqueries: int = 3  # fan-out cap (parallel retrieval workers per question)
+    tool_timeout_s: float = 60  # per MCP tool call; a hung branch must not hang the stream
+    eval_judge_model: str = "qwen/qwen3.8-27b"  # evals judge: different family AND daily budget than the agent
 
     @property
     def llm_configured(self) -> bool:

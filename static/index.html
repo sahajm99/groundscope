@@ -19,8 +19,12 @@
   .msg.user .b { background:var(--blue); color:#fff; }
   .msg .b { display:inline-block; background:var(--bg); border:1px solid var(--border); padding:8px 12px; border-radius:10px; white-space:pre-wrap; }
   .msg.user { text-align:right; }
-  .cite { font:12px ui-monospace,monospace; color:var(--muted); margin-top:6px; }
-  .cite a { color:var(--blue); }
+  .cite { font:12px ui-monospace,monospace; color:var(--muted); margin-top:8px; border-top:1px dashed var(--border); padding-top:6px; }
+  .cite a { color:var(--blue); text-decoration:none; } .cite a:hover { text-decoration:underline; }
+  .cite-h { color:var(--muted); letter-spacing:.04em; margin-bottom:4px; }
+  .src { margin:4px 0 6px; } .src-h { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+  .src-n { color:var(--muted); min-width:1.2em; } .src-t { color:var(--text); } .src-d { color:var(--muted); font-size:11px; }
+  .src-s { color:var(--muted); font-style:italic; margin-left:1.9em; line-height:1.4; }
   .step { border-left:2px solid var(--border); padding:6px 0 6px 12px; margin-bottom:8px; font:13px ui-monospace,monospace; }
   .step .t { color:var(--muted); }
   .step.tool_call { border-color:var(--yellow); }
@@ -47,12 +51,17 @@
   .step .links a:hover { text-decoration:underline; }
   .placeholder { color:var(--muted); font:13px ui-monospace,monospace; padding:8px 2px; }
   .step .preview { margin-top:5px; padding:6px 8px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--muted); font-size:12px; font-style:italic; line-height:1.4; }
+  .lane { border:1px dashed var(--border); border-radius:8px; padding:6px 8px; margin:6px 0 }
+  .lane-h { font:11px ui-monospace,monospace; color:var(--muted); margin-bottom:4px; letter-spacing:.02em }
+  .lane[data-branch="0"] { border-color:#7c3aed } .lane[data-branch="0"] .lane-h { color:#7c3aed }
+  .lane[data-branch="1"] { border-color:#0891b2 } .lane[data-branch="1"] .lane-h { color:#0891b2 }
+  .lane[data-branch="2"] { border-color:#d97706 } .lane[data-branch="2"] .lane-h { color:#d97706 }
 </style>
 </head>
 <body>
 <header>
-  <h1>Groundscope ✦ <span style="color:var(--muted);font-weight:400;font-size:13px">observable agentic RAG</span></h1>
-  <p>Ask a question. Watch the agent search your docs, fall back to the web, and answer with citations — live, on the right.</p>
+  <h1>Groundscope ✦ <span style="color:var(--muted);font-weight:400;font-size:13px">agent harness: MCP tool bus, parallel fan-out, evals-in-CI</span></h1>
+  <p>Ask a question. Watch the agent split it into parallel branches, search your docs or fall back to the web, and answer with citations — live, on the right.</p>
 </header>
 <main>
   <section class="panel">
@@ -83,60 +92,129 @@ function add(role, text){ const d=document.createElement('div'); d.className='ms
   d.innerHTML='<span class="b"></span>'; d.querySelector('.b').textContent=text; chat.appendChild(d);
   chat.scrollTop=chat.scrollHeight; return d; }
 
+// Small DOM helpers. All server-provided strings go through textContent, never innerHTML.
+function el(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=String(text); return e; }
+function txt(s){ return document.createTextNode(s); }
+function safeHref(url){ return (typeof url==='string' && /^https?:\/\//i.test(url)) ? url : null; }
+// Link element: real anchor only for http(s) URLs, plain text otherwise.
+function linkEl(title, url, cls){
+  const href=safeHref(url);
+  if(!href) return el('span', cls, title);
+  const a=el('a', cls, title); a.setAttribute('href', href);
+  a.setAttribute('target','_blank'); a.setAttribute('rel','noopener'); return a;
+}
+
+
+// AI-Mode style sources: title (a real link for http(s)), where it came from, and the snippet
+// that was actually used. All strings go through textContent.
+function domainOf(url){ try{ return new URL(url).hostname.replace(/^www\./,''); }catch(e){ return ''; } }
+function sourcesBlock(cits){
+  const c=el('div','cite');
+  c.appendChild(el('div','cite-h','Sources ('+cits.length+')'));
+  cits.forEach((x,i)=>{
+    const row=el('div','src');
+    const head=el('div','src-h');
+    head.appendChild(el('span','src-n', String(i+1)));
+    if(x.kind==='web' && safeHref(x.detail)){
+      head.appendChild(linkEl(x.label||x.detail, x.detail, 'src-t'));
+      const dom=domainOf(x.detail); if(dom) head.appendChild(el('span','src-d', dom));
+    } else {
+      head.appendChild(el('span','src-t', x.label||''));
+      head.appendChild(el('span','src-d', x.kind==='doc' ? 'your documents' : (x.kind||'')));
+    }
+    row.appendChild(head);
+    if(x.snippet) row.appendChild(el('div','src-s', x.snippet));
+    c.appendChild(row);
+  });
+  return c;
+}
+
+// Fan-out lanes: branch number -> {el, h, titled}. Reset per question in ask().
+let lanes = new Map();
+const LANE_INPUT_MAX = 80;
+function laneFor(n){
+  let L=lanes.get(n);
+  if(!L){
+    const box=el('div','lane'); box.setAttribute('data-branch', String(n));
+    const h=el('div','lane-h','branch '+n); box.appendChild(h);
+    L={el:box, h:h, titled:false}; lanes.set(n,L); trace.appendChild(box);
+  }
+  return L;
+}
+
 function step(ev){
-  const d=document.createElement('div'); d.className='step '+ev.type;
-  const tool = ev.tool ? `<span class="tool">${ev.tool}</span> ` : '';
-  const score = (ev.score!=null) ? ` <span class="score">d=${ev.score.toFixed(3)}</span>` : '';
-  const ms = ev.ms ? `<span class="ms">${ev.ms}ms</span>` : '';
-  d.innerHTML = `${ms}<span class="t">${ev.type}</span> ${tool}${score}<div>${ev.summary||''}</div>`;
+  const d=el('div','step '+(ev.type||''));
+  if(ev.ms) d.appendChild(el('span','ms', ev.ms+'ms'));
+  d.appendChild(el('span','t', ev.type||''));
+  d.appendChild(txt(' '));
+  if(ev.tool){ d.appendChild(el('span','tool', ev.tool)); d.appendChild(txt(' ')); }
+  if(ev.score!=null){ d.appendChild(txt(' ')); d.appendChild(el('span','score','d='+Number(ev.score).toFixed(3))); }
+  d.appendChild(el('div', null, ev.summary||''));
   if(ev.preview){
     const pv=document.createElement('div'); pv.className='preview';
     pv.textContent='“'+ev.preview+'”'; d.appendChild(pv);
   }
   if(ev.links && ev.links.length){
-    const u=document.createElement('div'); u.className='links';
-    u.innerHTML=ev.links.map(l=>`<a href="${l.url}" target="_blank" rel="noopener">${l.title} ↗</a>`).join('');
+    const u=el('div','links');
+    for(const l of ev.links){ if(!l) continue; u.appendChild(linkEl((l.title||l.url||'')+' ↗', l.url)); }
     d.appendChild(u);
   }
-  trace.appendChild(d); trace.scrollTop=trace.scrollHeight;
+  let parent=trace;
+  if(typeof ev.branch==='number' && Number.isFinite(ev.branch)){
+    const L=laneFor(ev.branch);
+    if(!L.titled && ev.type==='tool_call' && ev.input){
+      let q=String(ev.input).replace(/\s+/g,' ').trim();
+      if(q.length>LANE_INPUT_MAX) q=q.slice(0,LANE_INPUT_MAX-1)+'…';
+      L.h.textContent='branch '+ev.branch+' · '+q; L.titled=true;
+    }
+    parent=L.el;
+  }
+  parent.appendChild(d); trace.scrollTop=trace.scrollHeight;
 }
 
 async function loadDocs(){
   try{
     const r=await fetch('/documents'); const j=await r.json();
-    const el=document.getElementById('docs');
+    const box=document.getElementById('docs');
+    box.textContent='';
     if(!j.documents || !j.documents.length){
-      el.innerHTML='<span class="empty">📁 No documents yet — upload a PDF to ground answers in it.</span>'; return;
+      box.appendChild(el('span','empty','📁 No documents yet — upload a PDF to ground answers in it.')); return;
     }
-    el.innerHTML='<span class="lbl">📁 Documents:</span> '+j.documents.map(d=>
-      `<span class="doc-chip">${d.file_name} <span class="meta">${d.pages}p · ${d.chunk_count} chunks</span></span>`).join('');
+    box.appendChild(el('span','lbl','📁 Documents:')); box.appendChild(document.createTextNode(' '));
+    for(const d of j.documents){
+      const chip=el('span','doc-chip', String(d.file_name)+' ');
+      chip.appendChild(el('span','meta', `${Number(d.pages)}p · ${Number(d.chunk_count)} chunks`));
+      box.appendChild(chip);
+    }
   }catch(e){}
 }
 loadDocs();
 
 async function ask(q){
   q=(q||'').trim(); if(!q) return; send.disabled=true;
-  document.getElementById('q').value='';
-  add('user', q); trace.innerHTML='';
-  const res = await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
-  if(!res.ok || !res.body){ add('agent', await res.text()); send.disabled=false; return; }
-  const reader=res.body.getReader(), dec=new TextDecoder(); let buf='';
-  while(true){ const {done,value}=await reader.read(); if(done) break;
-    buf=(buf+dec.decode(value,{stream:true})).replace(/\r/g,''); const blocks=buf.split('\n\n'); buf=blocks.pop();
-    for(const b of blocks){
-      let ev='message', data=''; for(const line of b.split('\n')){
-        if(line.startsWith('event:')) ev=line.slice(6).trim();
-        else if(line.startsWith('data:')) data+=line.slice(5).trim();
+  try{
+
+    document.getElementById('q').value='';
+    add('user', q); trace.innerHTML=''; lanes.clear();
+    const res = await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
+    if(!res.ok || !res.body){ add('agent', await res.text()); send.disabled=false; return; }
+    const reader=res.body.getReader(), dec=new TextDecoder(); let buf='';
+    while(true){ const {done,value}=await reader.read(); if(done) break;
+      buf=(buf+dec.decode(value,{stream:true})).replace(/\r/g,''); const blocks=buf.split('\n\n'); buf=blocks.pop();
+      for(const b of blocks){
+        let ev='message', data=''; for(const line of b.split('\n')){
+          if(line.startsWith('event:')) ev=line.slice(6).trim();
+          else if(line.startsWith('data:')) data+=line.slice(5).trim();
+        }
+        if(!data) continue; const p=JSON.parse(data);
+        if(ev==='trace') step(p);
+        else if(ev==='answer'){ const d=add('agent', p.answer);
+          if(p.citations&&p.citations.length){ d.appendChild(sourcesBlock(p.citations)); } }
       }
-      if(!data) continue; const p=JSON.parse(data);
-      if(ev==='trace') step(p);
-      else if(ev==='answer'){ const d=add('agent', p.answer);
-        if(p.citations&&p.citations.length){ const c=document.createElement('div'); c.className='cite';
-          c.innerHTML='sources: '+p.citations.map(x=> x.kind==='web' ? `<a href="${x.detail}" target="_blank">${x.label} ↗</a>` : x.label).join(' · ');
-          d.appendChild(c); } }
     }
-  }
-  send.disabled=false;
+    send.disabled=false;
+  }catch(e){ add('agent', 'Something went wrong talking to the agent. Try again.'); }
+  finally{ send.disabled=false; }
 }
 
 async function upload(){

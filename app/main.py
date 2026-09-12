@@ -11,12 +11,13 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.agent.toolbus import close_bus, get_bus, peek_bus
 from app.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("groundscope")
 
-app = FastAPI(title="Groundscope", version="0.1.0")
+app = FastAPI(title="Groundscope", version="2.0.0")
 
 STATIC_DIR = Path(__file__).parent.parent / "static"
 
@@ -35,6 +36,26 @@ def _startup():
             logger.warning("Schema init skipped: %s", e)
 
 
+@app.on_event("startup")
+async def _warm_tool_bus():
+    """Start the MCP servers (keepalive retrieval child) before the first question, and give
+    the loop a thread pool that fits fan-out (default is 5 threads on a 1-vCPU host)."""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    asyncio.get_running_loop().set_default_executor(ThreadPoolExecutor(max_workers=16, thread_name_prefix="gs"))
+    try:
+        bus = await get_bus()
+        logger.info("MCP tool bus: %s", bus.servers())
+    except Exception as e:  # noqa: BLE001
+        logger.warning("MCP tool bus failed to load: %s", e)
+
+
+@app.on_event("shutdown")
+async def _close_tool_bus():
+    await close_bus()
+
+
 from app.api import ask as ask_api  # noqa: E402
 from app.api import ingest as ingest_api  # noqa: E402
 
@@ -43,7 +64,7 @@ app.include_router(ingest_api.router)
 
 
 @app.get("/health")
-def health():
+async def health():
     """Liveness + subsystem readiness. Also pinged by the keep-warm cron;
     touches the DB so Supabase doesn't pause on idle."""
     db_ok = False
@@ -54,6 +75,9 @@ def health():
             db_ok = ping_db()
         except Exception as e:  # noqa: BLE001
             logger.warning("DB ping failed: %s", e)
+    # Read the cached bus only: a health probe must never trigger a (slow) rebuild.
+    bus = peek_bus()
+    mcp = bus.servers() if bus is not None else {}
     return {
         "status": "ok",
         "llm_configured": settings.llm_configured,
@@ -62,6 +86,7 @@ def health():
         "web_search_configured": settings.web_search_configured,
         "embed_provider": settings.embed_provider,
         "vector_dim": settings.vector_dim,
+        "mcp": mcp,
     }
 
 

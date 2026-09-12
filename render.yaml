@@ -16,13 +16,15 @@ services:
         sync: false
       - key: LANGSMITH_API_KEY      # optional (observability)
         sync: false
+      - key: GEMINI_API_KEY         # optional: third LLM tier + eval judge (Google AI Studio, free)
+        sync: false
       # --- non-secret config ---
       - key: LLM_BASE_URL
         value: https://api.groq.com/openai/v1
       - key: LLM_MODEL
-        value: llama-3.3-70b-versatile
+        value: openai/gpt-oss-120b
       - key: LLM_FALLBACK_MODEL
-        value: llama-3.1-8b-instant
+        value: openai/gpt-oss-20b
       - key: EMBED_PROVIDER
         value: local
       - key: EMBED_MODEL

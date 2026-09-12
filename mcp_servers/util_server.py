@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import ast
 import operator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from mcp.server.fastmcp import FastMCP
 
@@ -22,19 +22,39 @@ _OPS = {
 }
 
 
+MAX_EXPRESSION_CHARS = 100
+MAX_EXPONENT = 1000
+MAX_MAGNITUDE = 1e300
+
+
+def _bounded(value):
+    """The expression comes from an LLM that reads untrusted text: numbers only, and no
+    intermediate result large enough to exhaust memory or CPU."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("numbers only")
+    if abs(value) > MAX_MAGNITUDE:
+        raise ValueError("result too large")
+    return value
+
+
 def _eval(node):
     if isinstance(node, ast.Constant):
-        return node.value
+        return _bounded(node.value)
     if isinstance(node, ast.BinOp):
-        return _OPS[type(node.op)](_eval(node.left), _eval(node.right))
+        left, right = _eval(node.left), _eval(node.right)
+        if isinstance(node.op, ast.Pow) and abs(right) > MAX_EXPONENT:
+            raise ValueError("exponent too large")
+        return _bounded(_OPS[type(node.op)](left, right))
     if isinstance(node, ast.UnaryOp):
-        return _OPS[type(node.op)](_eval(node.operand))
+        return _bounded(_OPS[type(node.op)](_eval(node.operand)))
     raise ValueError("unsupported expression")
 
 
 @mcp.tool()
 def calculator(expression: str) -> str:
     """Evaluate a basic arithmetic expression, e.g. '47 * 89' or '(2+3)**4'."""
+    if len(expression) > MAX_EXPRESSION_CHARS:
+        return "error: expression too long"
     try:
         return str(_eval(ast.parse(expression, mode="eval").body))
     except Exception as e:  # noqa: BLE001
@@ -44,7 +64,7 @@ def calculator(expression: str) -> str:
 @mcp.tool()
 def current_datetime() -> str:
     """Return the current UTC date and time in ISO-8601 format."""
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 if __name__ == "__main__":

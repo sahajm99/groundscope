@@ -6,6 +6,7 @@ uploads plus the one global, read-only seeded corpus (session_id = 'GLOBAL').
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import numpy as np
@@ -84,7 +85,7 @@ class Hit:
     text: str
     file_name: str
     page_number: int
-    distance: float  # cosine distance: lower = closer
+    distance: float | None  # best cosine distance of the fused set (lower = closer); None if no dense hits
 
 
 def add_document(
@@ -127,6 +128,21 @@ def vector_search(session_id: str, query_embedding: list[float], limit: int = 6)
         return [Hit(text=r[0], file_name=r[1], page_number=r[2], distance=float(r[3])) for r in cur.fetchall()]
 
 
+_WORD = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?")
+
+
+def _or_tsquery(query_text: str) -> str:
+    """'What's Meridian's Compass program?' -> "what's | meridian's | compass | program".
+    Words are quoted so tsquery syntax characters cannot leak in; dictionary stop words
+    are dropped by Postgres itself."""
+    words = []
+    for w in _WORD.findall(query_text):
+        w = w.replace("'", "''")
+        if w and w not in words:
+            words.append(w)
+    return " | ".join(f"'{w}'" for w in words[:32])
+
+
 def hybrid_search(
     session_id: str, query_embedding: list[float], query_text: str, limit: int = 6
 ) -> tuple[list[Hit], float | None]:
@@ -140,12 +156,16 @@ def hybrid_search(
             "WHERE session_id IN (%s, %s) ORDER BY embedding <=> %s LIMIT 10",
             (qv, session_id, GLOBAL_SESSION, qv),
         ).fetchall()
+        # OR the query terms: plainto_tsquery ANDs every word, so one word absent from a
+        # chunk (typical for a full question) returned nothing and the fused ranking silently
+        # degraded to dense-only. ts_rank still rewards chunks matching more terms.
+        tsq = _or_tsquery(query_text)
         krows = conn.execute(
             "SELECT text, file_name, page_number FROM chunks "
-            "WHERE session_id IN (%s, %s) AND ts @@ plainto_tsquery('english', %s) "
-            "ORDER BY ts_rank(ts, plainto_tsquery('english', %s)) DESC LIMIT 10",
-            (session_id, GLOBAL_SESSION, query_text, query_text),
-        ).fetchall()
+            "WHERE session_id IN (%s, %s) AND ts @@ to_tsquery('english', %s) "
+            "ORDER BY ts_rank(ts, to_tsquery('english', %s)) DESC LIMIT 10",
+            (session_id, GLOBAL_SESSION, tsq, tsq),
+        ).fetchall() if tsq else []
 
     def _key(r):
         return (r[1], r[2], r[0][:60])

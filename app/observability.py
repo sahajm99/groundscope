@@ -7,8 +7,8 @@ show the same thing.
 
 from __future__ import annotations
 
-from app.config import settings
 from app.agent.trace import TraceEvent
+from app.config import settings
 
 
 class _NullTrace:
@@ -38,7 +38,7 @@ _client = None
 def _get_client():
     global _client
     if _client is None:
-        from langfuse import Langfuse
+        from langfuse import Langfuse  # type: ignore[import-not-found]  # dormant; not pinned
 
         _client = Langfuse(
             public_key=settings.langfuse_public_key,

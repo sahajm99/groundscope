@@ -1,0 +1,43 @@
+Zephyr Logistics - Internal Operations Brief
+
+Company Overview
+
+Zephyr Logistics is a regional freight company founded in 2014, headquartered in Akron, Ohio. The company operates a fleet of 312 trucks across the Midwest corridor. From its start as a small dry-van carrier serving Ohio, Indiana, and Michigan, Zephyr has grown into a mid-sized asset-based carrier with terminals in Akron, Indianapolis, and Grand Rapids. The company hauls primarily consumer packaged goods, automotive parts, and building materials, and serves a mix of contract shippers and spot-market loads. Zephyr remains privately held. Its leadership team includes Chief Financial Officer Priya Raman, who joined the company in 2021 and oversees finance, fuel procurement, and the capital plan for fleet expansion.
+
+This brief summarizes the core operating programs that Zephyr uses to run the fleet: the Tailwind routing engine, the Anchor driver program, the predictive-maintenance model, the Slipstream fuel program, the Northstar safety scorecard, and the 2025 Southeast expansion.
+
+Routing System
+
+Zephyr's proprietary routing engine is called "Tailwind". Tailwind assigns loads using a three-stage pipeline: demand forecasting, lane optimization, and driver matching. The lane optimization stage uses a modified Clarke-Wright savings algorithm tuned for hub-and-spoke networks. Tailwind reduced empty-mile percentage from 31% to 18% in its first year of operation.
+
+In practice, the three stages run in sequence each evening and again on a rolling basis during the day as new loads arrive. The demand forecasting stage looks at booked freight, historical lane volumes, and shipper commitments to estimate how many loads will need to move out of each terminal over the next 72 hours. The lane optimization stage then groups those loads into tours that minimize deadhead miles, which is where the Clarke-Wright savings logic applies. The driver matching stage assigns each tour to a specific driver, taking into account hours-of-service remaining, home-time commitments under the Anchor program, and equipment type. Dispatchers can override any Tailwind assignment, but overrides are logged and reviewed weekly so that the planning team can find patterns the engine is missing.
+
+Driver Program
+
+Zephyr runs a driver-retention program called "Anchor". Anchor pairs each new driver with a veteran mentor for the first 90 days and guarantees home time every 14 days. Since Anchor launched, annual driver turnover dropped from 94% to 61%.
+
+Mentors are drawn from drivers with at least five years of accident-free service at Zephyr and receive a monthly stipend for each active mentee. During the 90-day pairing, mentor and mentee check in by phone at least twice a week, and the mentor rides along for the first two long-haul trips. The home-time guarantee is enforced inside Tailwind: the driver matching stage will not assign a tour that would push a driver past 14 days away from their home terminal. Zephyr credits the combination of predictable home time and early mentorship with most of the turnover improvement, and the company tracks mentee retention at 6 and 12 months as a program health measure.
+
+Maintenance
+
+The company's predictive-maintenance model flags a truck for inspection when the combined vibration and oil-temperature score exceeds 0.72. This cut roadside breakdowns by 40%.
+
+The model reads telematics data from each tractor, including drivetrain vibration sensors and engine oil-temperature readings, and produces a single combined score between 0 and 1 for each truck every night. Trucks above the 0.72 threshold are pulled into the nearest Zephyr terminal shop within 48 hours for inspection. The maintenance team reviews the threshold quarterly; it was originally set at 0.80 and lowered to 0.72 after the first six months when the team found that too many failures were occurring on trucks scoring between 0.72 and 0.80.
+
+Fuel Program
+
+Zephyr's fuel program is named "Slipstream". Slipstream has two parts: a managed fuel-card network and an idle-reduction initiative. Under the fuel-card component, every driver carries a Zephyr fuel card that is accepted at a negotiated network of truck stops along the company's main lanes; Tailwind recommends fuel stops on each tour based on the discounted price available at each location. The idle-reduction component installed auxiliary power units on the sleeper cabs so that drivers can run heat and air conditioning overnight without idling the main engine, and it set a company idle-time target of under 15% of engine hours.
+
+Together, the two components of Slipstream saved 7.4% fuel per mile compared with the year before the program launched. CFO Priya Raman sponsors Slipstream and reports its results to the board each quarter as part of the cost-per-mile review.
+
+Safety Scorecard
+
+Zephyr measures driver and fleet safety with a scorecard called "Northstar". Northstar tracks four metrics: hard-braking events per 1,000 miles, speeding events per 1,000 miles, hours-of-service violations per month, and preventable accidents per million miles. Each driver receives a Northstar score monthly, and each terminal receives a rolled-up score. Drivers who stay in the top Northstar tier for four consecutive quarters receive a safety bonus, and mentors under the Anchor program are required to hold a top-tier Northstar score to remain eligible. Terminal managers review Northstar results in a monthly safety meeting, and any driver whose score falls into the bottom tier for two months in a row is scheduled for refresher training.
+
+2025 Southeast Expansion
+
+In 2025 Zephyr expanded beyond the Midwest corridor into the Southeast corridor, opening a new hub in Chattanooga, Tennessee. The Chattanooga hub gives Zephyr a base for lanes running between Ohio and the Southeast, including Atlanta, Nashville, and Birmingham. The hub opened with 40 tractors reassigned from the Midwest fleet and a plan to add new trucks as contract volume grows. Tailwind was reconfigured to treat Chattanooga as a hub in its hub-and-spoke network, and the Anchor program was extended so that drivers based in Chattanooga receive the same 90-day mentor pairing and 14-day home-time guarantee as drivers at the original terminals. The expansion was financed from operating cash flow and an equipment line arranged by Priya Raman's finance team.
+
+Summary of Key Figures
+
+Founded: 2014. Headquarters: Akron, Ohio. Fleet: 312 trucks. Routing engine: Tailwind, three-stage pipeline with a modified Clarke-Wright savings algorithm; empty miles reduced from 31% to 18%. Driver program: Anchor, 90-day mentor pairing and home time every 14 days; turnover reduced from 94% to 61%. Predictive maintenance: inspection threshold of 0.72 on the combined vibration and oil-temperature score; roadside breakdowns cut by 40%. Fuel program: Slipstream, fuel cards plus idle reduction, 7.4% fuel saved per mile. Safety scorecard: Northstar, four metrics. 2025 expansion: Southeast corridor with a Chattanooga hub. CFO: Priya Raman.
