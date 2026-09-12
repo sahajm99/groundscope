@@ -338,7 +338,7 @@ def aggregate_node(state: S, writer: StreamWriter) -> dict:
 
 
 # -- Node: synthesize | refuse ---------------------------------------------------
-def synth_node(state: S, writer: StreamWriter) -> dict:
+async def synth_node(state: S, writer: StreamWriter) -> dict:
     collected = state.get("collected", [])
     if not collected:
         _emit(writer, state, type="refusal", summary="No groundable sources found.")
@@ -350,7 +350,7 @@ def synth_node(state: S, writer: StreamWriter) -> dict:
     block = "\n\n".join(
         f"[{s.label}{(' - ' + s.detail) if s.kind == 'web' else ''}]\n{s.text[:1200]}" for s in collected
     )
-    ans = complete(_SYNTH_SYS, f"QUESTION:\n{state['question']}\n\nSOURCES:\n{block}")
+    ans = await asyncio.to_thread(complete, _SYNTH_SYS, f"QUESTION:\n{state['question']}\n\nSOURCES:\n{block}")
     if ans.strip().startswith(REFUSAL_PREFIX):
         # The model judged the sources insufficient: show no citations for a non-answer.
         _emit(writer, state, type="refusal", summary="Sources did not contain the answer; refused rather than guess.")

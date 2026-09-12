@@ -10,6 +10,7 @@ Two tool classes (LLD section 1.3):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Callable
@@ -95,7 +96,8 @@ class ToolBus:
         if "hybrid_search" in self._tools:
 
             async def search_documents(query: str) -> str:
-                res = await self.call("hybrid_search", session_id=session_id, query=query, query_embedding=embed(query))
+                emb = await asyncio.to_thread(embed, query)  # embedding is CPU work; keep the loop free
+                res = await self.call("hybrid_search", session_id=session_id, query=query, query_embedding=emb)
                 return json.dumps(res)
 
             out.append(

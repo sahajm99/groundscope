@@ -28,9 +28,6 @@ from evals import judge as J
 
 RunCase = Callable[[dict], tuple[list[dict], dict, dict]]
 
-METRICS = ("faithfulness", "answer_relevance", "context_precision")
-
-
 @dataclass(frozen=True)
 class Thresholds:
     faithfulness: float = 0.85
