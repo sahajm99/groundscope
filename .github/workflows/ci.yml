@@ -39,7 +39,7 @@ jobs:
       LLM_FALLBACK_MODEL: openai/gpt-oss-20b
       EVAL_JUDGE_MODEL: qwen/qwen3.8-27b
       AGENT_ENGINE: langgraph
-      RELEVANCE_DISTANCE_THRESHOLD: "0.0"  # DELIBERATE REGRESSION: nothing grounds in documents
+      RELEVANCE_DISTANCE_THRESHOLD: "0.5"
       FASTEMBED_CACHE_PATH: /home/runner/.cache/fastembed
       PYTHONUNBUFFERED: "1"
     steps:
