@@ -59,7 +59,7 @@ async def test_grounded_path_uses_mcp_hybrid_search(monkeypatch):
     assert [c[0] for c in bus.calls] == ["hybrid_search"]
     assert bus.calls[0][1]["session_id"] == "sess"
     assert bus.calls[0][1]["query_embedding"] == [0.0]
-    assert answer["citations"] == [{"label": "sample.txt p.1", "kind": "doc", "detail": "p.1"}]
+    assert answer["citations"] == [{"label": "sample.txt p.1", "kind": "doc", "detail": "p.1", "snippet": DOC["text"]}]
     assert any(e["type"] == "tool_result" and e["tool"] == "hybrid_search" and e["score"] == 0.2 for e in events)
 
 
@@ -72,7 +72,7 @@ async def test_weak_docs_fall_back_to_web_via_mcp(monkeypatch):
     )
     events, answer = await run("Who is the CEO of Microsoft?", bus, monkeypatch)
     assert [c[0] for c in bus.calls] == ["hybrid_search", "web_search"]
-    assert answer["citations"] == [{"label": "T", "kind": "web", "detail": "https://u"}]
+    assert answer["citations"] == [{"label": "T", "kind": "web", "detail": "https://u", "snippet": WEB["text"]}]
     assert any(e["type"] == "tool_result" and e["tool"] == "web_search" and e["links"] == [{"title": "T", "url": "https://u"}] for e in events)
 
 
@@ -213,3 +213,14 @@ async def test_synthesis_sees_the_whole_chunk(monkeypatch):
     bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.2, "sources": [dict(DOC, text=long_chunk)]}})
     await run("readmission?", bus, monkeypatch)
     assert "fell from 17% to 11%" in captured["user"]
+
+
+async def test_citations_carry_a_snippet_and_a_stable_shape(monkeypatch):
+    """AI-Mode style sources: each citation shows what was actually used, not just a label."""
+    web = dict(WEB, text="Satya Nadella has been CEO of Microsoft since 2014. " * 5)
+    bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.9, "sources": [DOC]},
+                   "web_search": lambda **kw: {"summary": "", "configured": True, "sources": [web]}})
+    _, answer = await run("who is the CEO?", bus, monkeypatch)
+    c = answer["citations"][0]
+    assert c["kind"] == "web" and c["label"] == "T" and c["detail"] == "https://u"
+    assert c["snippet"].startswith("Satya Nadella has been CEO") and len(c["snippet"]) <= 200

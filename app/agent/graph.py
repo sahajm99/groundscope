@@ -107,7 +107,8 @@ def _citations(collected: list) -> list[dict]:
         k = (s.kind, s.label, s.detail)
         if k not in seen:
             seen.add(k)
-            out.append({"label": s.label, "kind": s.kind, "detail": s.detail})
+            snippet = " ".join(s.text.split())[:200]  # what was actually used, AI-Mode style
+            out.append({"label": s.label, "kind": s.kind, "detail": s.detail, "snippet": snippet})
     return out
 
 

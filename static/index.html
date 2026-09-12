@@ -19,8 +19,12 @@
   .msg.user .b { background:var(--blue); color:#fff; }
   .msg .b { display:inline-block; background:var(--bg); border:1px solid var(--border); padding:8px 12px; border-radius:10px; white-space:pre-wrap; }
   .msg.user { text-align:right; }
-  .cite { font:12px ui-monospace,monospace; color:var(--muted); margin-top:6px; }
-  .cite a { color:var(--blue); }
+  .cite { font:12px ui-monospace,monospace; color:var(--muted); margin-top:8px; border-top:1px dashed var(--border); padding-top:6px; }
+  .cite a { color:var(--blue); text-decoration:none; } .cite a:hover { text-decoration:underline; }
+  .cite-h { color:var(--muted); letter-spacing:.04em; margin-bottom:4px; }
+  .src { margin:4px 0 6px; } .src-h { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+  .src-n { color:var(--muted); min-width:1.2em; } .src-t { color:var(--text); } .src-d { color:var(--muted); font-size:11px; }
+  .src-s { color:var(--muted); font-style:italic; margin-left:1.9em; line-height:1.4; }
   .step { border-left:2px solid var(--border); padding:6px 0 6px 12px; margin-bottom:8px; font:13px ui-monospace,monospace; }
   .step .t { color:var(--muted); }
   .step.tool_call { border-color:var(--yellow); }
@@ -98,6 +102,31 @@ function linkEl(title, url, cls){
   if(!href) return el('span', cls, title);
   const a=el('a', cls, title); a.setAttribute('href', href);
   a.setAttribute('target','_blank'); a.setAttribute('rel','noopener'); return a;
+}
+
+
+// AI-Mode style sources: title (a real link for http(s)), where it came from, and the snippet
+// that was actually used. All strings go through textContent.
+function domainOf(url){ try{ return new URL(url).hostname.replace(/^www\./,''); }catch(e){ return ''; } }
+function sourcesBlock(cits){
+  const c=el('div','cite');
+  c.appendChild(el('div','cite-h','Sources ('+cits.length+')'));
+  cits.forEach((x,i)=>{
+    const row=el('div','src');
+    const head=el('div','src-h');
+    head.appendChild(el('span','src-n', String(i+1)));
+    if(x.kind==='web' && safeHref(x.detail)){
+      head.appendChild(linkEl(x.label||x.detail, x.detail, 'src-t'));
+      const dom=domainOf(x.detail); if(dom) head.appendChild(el('span','src-d', dom));
+    } else {
+      head.appendChild(el('span','src-t', x.label||''));
+      head.appendChild(el('span','src-d', x.kind==='doc' ? 'your documents' : (x.kind||'')));
+    }
+    row.appendChild(head);
+    if(x.snippet) row.appendChild(el('div','src-s', x.snippet));
+    c.appendChild(row);
+  });
+  return c;
 }
 
 // Fan-out lanes: branch number -> {el, h, titled}. Reset per question in ask().
@@ -180,11 +209,7 @@ async function ask(q){
         if(!data) continue; const p=JSON.parse(data);
         if(ev==='trace') step(p);
         else if(ev==='answer'){ const d=add('agent', p.answer);
-          if(p.citations&&p.citations.length){ const c=el('div','cite'); c.appendChild(txt('sources: '));
-            p.citations.forEach((x,i)=>{ if(i) c.appendChild(txt(' · '));
-              if(x.kind==='web' && safeHref(x.detail)) c.appendChild(linkEl((x.label||'')+' ↗', x.detail));
-              else c.appendChild(txt(x.label||'')); });
-            d.appendChild(c); } }
+          if(p.citations&&p.citations.length){ d.appendChild(sourcesBlock(p.citations)); } }
       }
     }
     send.disabled=false;

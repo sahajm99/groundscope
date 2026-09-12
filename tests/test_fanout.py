@@ -107,7 +107,7 @@ async def test_duplicate_sources_across_branches_are_deduped(monkeypatch):
     monkeypatch.setattr(graph, "complete_json", _plan(["A", "B"]))
     bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.2, "sources": [DOC, DOC]}})
     _, answer = await run("A and B", bus, monkeypatch)
-    assert answer["citations"] == [{"label": "sample.txt p.1", "kind": "doc", "detail": "p.1"}]
+    assert answer["citations"] == [{"label": "sample.txt p.1", "kind": "doc", "detail": "p.1", "snippet": DOC["text"]}]
 
 
 async def test_branch_timeout_degrades(monkeypatch):
@@ -142,7 +142,7 @@ async def test_different_chunks_with_the_same_page_label_all_reach_synthesis(mon
     _, answer = await run("A", bus, monkeypatch)
     assert "chunk one about Slipstream" in captured["user"]
     assert "chunk two about Northstar" in captured["user"]
-    assert answer["citations"] == [{"label": "sample.txt p.1", "kind": "doc", "detail": "p.1"}]  # one citation per page
+    assert [c["label"] for c in answer["citations"]] == ["sample.txt p.1"]  # one citation per page
 
 
 async def test_aggregate_interleaves_branches_so_each_branch_keeps_its_top_hits(monkeypatch):
