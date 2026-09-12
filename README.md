@@ -1,3 +1,5 @@
+[![ci](https://github.com/sahajm99/groundscope/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sahajm99/groundscope/actions/workflows/ci.yml)
+
 # Groundscope
 
 An **observable agentic RAG** demo. Upload a document (or use the seeded book), ask a

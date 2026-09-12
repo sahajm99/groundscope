@@ -88,33 +88,75 @@ function add(role, text){ const d=document.createElement('div'); d.className='ms
   d.innerHTML='<span class="b"></span>'; d.querySelector('.b').textContent=text; chat.appendChild(d);
   chat.scrollTop=chat.scrollHeight; return d; }
 
+// Small DOM helpers. All server-provided strings go through textContent, never innerHTML.
+function el(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=String(text); return e; }
+function txt(s){ return document.createTextNode(s); }
+function safeHref(url){ return (typeof url==='string' && /^https?:\/\//i.test(url)) ? url : null; }
+// Link element: real anchor only for http(s) URLs, plain text otherwise.
+function linkEl(title, url, cls){
+  const href=safeHref(url);
+  if(!href) return el('span', cls, title);
+  const a=el('a', cls, title); a.setAttribute('href', href);
+  a.setAttribute('target','_blank'); a.setAttribute('rel','noopener'); return a;
+}
+
+// Fan-out lanes: branch number -> {el, h, titled}. Reset per question in ask().
+let lanes = new Map();
+const LANE_INPUT_MAX = 80;
+function laneFor(n){
+  let L=lanes.get(n);
+  if(!L){
+    const box=el('div','lane'); box.setAttribute('data-branch', String(n));
+    const h=el('div','lane-h','branch '+n); box.appendChild(h);
+    L={el:box, h:h, titled:false}; lanes.set(n,L); trace.appendChild(box);
+  }
+  return L;
+}
+
 function step(ev){
-  const d=document.createElement('div'); d.className='step '+ev.type;
-  const tool = ev.tool ? `<span class="tool">${ev.tool}</span> ` : '';
-  const score = (ev.score!=null) ? ` <span class="score">d=${ev.score.toFixed(3)}</span>` : '';
-  const ms = ev.ms ? `<span class="ms">${ev.ms}ms</span>` : '';
-  d.innerHTML = `${ms}<span class="t">${ev.type}</span> ${tool}${score}<div>${ev.summary||''}</div>`;
+  const d=el('div','step '+(ev.type||''));
+  if(ev.ms) d.appendChild(el('span','ms', ev.ms+'ms'));
+  d.appendChild(el('span','t', ev.type||''));
+  d.appendChild(txt(' '));
+  if(ev.tool){ d.appendChild(el('span','tool', ev.tool)); d.appendChild(txt(' ')); }
+  if(ev.score!=null){ d.appendChild(txt(' ')); d.appendChild(el('span','score','d='+Number(ev.score).toFixed(3))); }
+  d.appendChild(el('div', null, ev.summary||''));
   if(ev.preview){
     const pv=document.createElement('div'); pv.className='preview';
     pv.textContent='“'+ev.preview+'”'; d.appendChild(pv);
   }
   if(ev.links && ev.links.length){
-    const u=document.createElement('div'); u.className='links';
-    u.innerHTML=ev.links.map(l=>`<a href="${l.url}" target="_blank" rel="noopener">${l.title} ↗</a>`).join('');
+    const u=el('div','links');
+    for(const l of ev.links){ if(!l) continue; u.appendChild(linkEl((l.title||l.url||'')+' ↗', l.url)); }
     d.appendChild(u);
   }
-  trace.appendChild(d); trace.scrollTop=trace.scrollHeight;
+  let parent=trace;
+  if(typeof ev.branch==='number' && Number.isFinite(ev.branch)){
+    const L=laneFor(ev.branch);
+    if(!L.titled && ev.type==='tool_call' && ev.input){
+      let q=String(ev.input).replace(/\s+/g,' ').trim();
+      if(q.length>LANE_INPUT_MAX) q=q.slice(0,LANE_INPUT_MAX-1)+'…';
+      L.h.textContent='branch '+ev.branch+' · '+q; L.titled=true;
+    }
+    parent=L.el;
+  }
+  parent.appendChild(d); trace.scrollTop=trace.scrollHeight;
 }
 
 async function loadDocs(){
   try{
     const r=await fetch('/documents'); const j=await r.json();
-    const el=document.getElementById('docs');
+    const box=document.getElementById('docs');
+    box.textContent='';
     if(!j.documents || !j.documents.length){
-      el.innerHTML='<span class="empty">📁 No documents yet — upload a PDF to ground answers in it.</span>'; return;
+      box.appendChild(el('span','empty','📁 No documents yet — upload a PDF to ground answers in it.')); return;
     }
-    el.innerHTML='<span class="lbl">📁 Documents:</span> '+j.documents.map(d=>
-      `<span class="doc-chip">${d.file_name} <span class="meta">${d.pages}p · ${d.chunk_count} chunks</span></span>`).join('');
+    box.appendChild(el('span','lbl','📁 Documents:')); box.appendChild(document.createTextNode(' '));
+    for(const d of j.documents){
+      const chip=el('span','doc-chip', String(d.file_name)+' ');
+      chip.appendChild(el('span','meta', `${Number(d.pages)}p · ${Number(d.chunk_count)} chunks`));
+      box.appendChild(chip);
+    }
   }catch(e){}
 }
 loadDocs();
@@ -122,7 +164,7 @@ loadDocs();
 async function ask(q){
   q=(q||'').trim(); if(!q) return; send.disabled=true;
   document.getElementById('q').value='';
-  add('user', q); trace.innerHTML='';
+  add('user', q); trace.innerHTML=''; lanes.clear();
   const res = await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
   if(!res.ok || !res.body){ add('agent', await res.text()); send.disabled=false; return; }
   const reader=res.body.getReader(), dec=new TextDecoder(); let buf='';
@@ -136,8 +178,10 @@ async function ask(q){
       if(!data) continue; const p=JSON.parse(data);
       if(ev==='trace') step(p);
       else if(ev==='answer'){ const d=add('agent', p.answer);
-        if(p.citations&&p.citations.length){ const c=document.createElement('div'); c.className='cite';
-          c.innerHTML='sources: '+p.citations.map(x=> x.kind==='web' ? `<a href="${x.detail}" target="_blank">${x.label} ↗</a>` : x.label).join(' · ');
+        if(p.citations&&p.citations.length){ const c=el('div','cite'); c.appendChild(txt('sources: '));
+          p.citations.forEach((x,i)=>{ if(i) c.appendChild(txt(' · '));
+            if(x.kind==='web' && safeHref(x.detail)) c.appendChild(linkEl((x.label||'')+' ↗', x.detail));
+            else c.appendChild(txt(x.label||'')); });
           d.appendChild(c); } }
     }
   }

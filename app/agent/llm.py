@@ -71,9 +71,15 @@ def _tiers() -> list[tuple[str, str, str]]:
     return tiers
 
 
-def complete(system: str, user: str, temperature: float = 0.2, max_tokens: int = 700) -> str:
+def complete(
+    system: str, user: str, temperature: float = 0.2, max_tokens: int = 700, model: str | None = None
+) -> str:
+    """Route through the tiers. An explicit `model` (e.g. the eval judge) becomes the first
+    tier on the primary provider; the configured tiers remain as fallbacks."""
     tiers = _tiers()
-    start = 1 if (_breaker.is_open() and len(tiers) > 1) else 0
+    if model:
+        tiers = [(model, settings.llm_base_url, settings.llm_api_key)] + [t for t in tiers if t[0] != model]
+    start = 1 if (_breaker.is_open() and len(tiers) > 1 and not model) else 0
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     last_err: Exception | None = None
     for i in range(start, len(tiers)):
@@ -93,9 +99,10 @@ def complete(system: str, user: str, temperature: float = 0.2, max_tokens: int =
     raise last_err if last_err else RuntimeError("no LLM tier available")
 
 
-def complete_json(system: str, user: str) -> dict:
+def complete_json(system: str, user: str, model: str | None = None, max_tokens: int = 300) -> dict:
     """Ask for a JSON object back; tolerate fenced code blocks."""
-    raw = complete(system + "\nRespond ONLY with a JSON object.", user, temperature=0.0, max_tokens=300).strip()
+    raw = complete(system + "\nRespond ONLY with a JSON object.", user, temperature=0.0,
+                   max_tokens=max_tokens, model=model).strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1].lstrip("json").strip()
     try:

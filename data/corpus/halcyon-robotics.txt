@@ -1,0 +1,39 @@
+Halcyon Robotics - Company and Product Brief
+
+Company Overview
+
+Halcyon Robotics is a warehouse automation company that designs, builds, and operates autonomous mobile picking robots for distribution centers. The company was founded in 2019 in Tempe, Arizona, by a team of former industrial-automation engineers and remains headquartered there, with its main assembly facility and test warehouse located a few miles from the original office. Halcyon sells its robots primarily to grocery, general merchandise, and third-party logistics operators that run high-volume each-picking operations, and it offers both outright purchase and a robots-as-a-service subscription.
+
+The company's engineering organization is led by Chief Technology Officer Mateo Villanueva, who joined Halcyon in 2020 after a career in mobile robot navigation. Villanueva oversees the hardware, autonomy, and fleet software teams and is the named executive sponsor for the Perch safety system described below.
+
+Flagship Robot: Kestrel K2
+
+Halcyon's flagship robot is the Kestrel K2, a second-generation autonomous mobile robot introduced in 2023. The Kestrel K2 has a payload capacity of 35 kg and a maximum travel speed of 1.8 m/s in open aisles, with speed automatically reduced in congested zones and near human workers. The robot carries a swappable battery pack rated for 6 hours of continuous picking operation; a depleted pack can be exchanged by a warehouse associate in under two minutes at a swap station, so a single Kestrel K2 can stay in service across multiple shifts without long charging pauses.
+
+The K2 uses a tote-on-top design with a conveyor-fed transfer deck so that it can hand totes to fixed conveyors without human help. Its navigation stack combines a prior map of the facility with real-time lidar and camera localization, allowing the robot to operate in aisles as narrow as 1.2 meters. The original Kestrel K1, launched in 2021, had a payload of 25 kg and a fixed battery; K1 units are still supported but no longer manufactured.
+
+Fleet Software: Aviary
+
+All Halcyon robots are managed by a fleet software platform called Aviary. Aviary runs on a server on the customer's premises with a cloud mirror for monitoring, and it handles task assignment, traffic management, and integration with the customer's warehouse management system. Aviary receives pick orders from the WMS, batches them into efficient routes, and assigns each route to a specific Kestrel K2 based on the robot's current location, remaining battery, and payload headroom.
+
+Aviary includes a charging and battery scheduler called Roost. Roost tracks the state of charge of every battery pack in the facility, both the packs installed on robots and the packs sitting in swap stations, and it plans when each robot should visit a swap station so that no robot runs out of charge during a route and so that swap-station demand is spread evenly across a shift. Roost also rotates packs to even out cycle counts, which Halcyon reports extends average pack life by roughly 20 percent compared with unmanaged swapping.
+
+Pick Accuracy and Performance
+
+Across its installed base, Halcyon reports a pick accuracy of 99.6%, measured as the share of picked units that match the ordered SKU and quantity at the packing station. The remaining errors are mostly attributed to mislabeled inventory locations rather than robot behavior, and Aviary flags locations with repeated errors for a slotting audit. Typical Kestrel K2 deployments achieve between 90 and 120 picks per robot per hour depending on order profile, and Halcyon's service-level commitment under its subscription plan is 98.5 percent fleet availability during scheduled operating hours.
+
+Safety System: Perch
+
+Every Kestrel K2 is equipped with a safety system called Perch. Perch fuses a 360-degree lidar with a forward-facing stereo camera pair to detect people, forklifts, and dropped objects in the robot's path. When Perch detects an obstacle, the robot stops within 40 cm of it at full speed, and it slows proactively when a person is detected within 2 meters. The stop distance is validated on each unit at the Tempe test warehouse before shipment and again during annual on-site certification. Perch operates independently of the Aviary fleet software, so a network outage does not disable obstacle detection. CTO Mateo Villanueva has stated that Perch was designed so that the robots can share aisles with human pickers rather than requiring fenced-off zones.
+
+Customers
+
+Halcyon's largest customer is Bluewater Grocers, a regional supermarket chain that has deployed Kestrel K2 fleets at 14 sites, including its two main regional distribution centers and a set of smaller micro-fulfillment locations attached to stores. Bluewater began with a single pilot site in 2022 and expanded to 14 sites by the end of 2025 under a multi-year subscription agreement. Halcyon uses the Bluewater deployment as its reference case for grocery customers because it covers ambient, chilled, and frozen picking zones; the Kestrel K2 is rated for operation down to minus 25 degrees Celsius in frozen zones when fitted with the cold-storage battery option. Other customers include several third-party logistics providers in Arizona, Texas, and Nevada, though Bluewater remains the only customer with more than ten sites.
+
+Funding
+
+In 2024 Halcyon closed a Series B financing round of $48 million led by Cairn Ventures, with participation from existing investors from the company's Series A. The company stated that the Series B proceeds would fund a second assembly line in Tempe, the expansion of the Aviary and Roost software teams, and the buildout of a field-service network to support customers outside the Southwest. Prior to the Series B, Halcyon had raised a seed round in 2019 and a Series A in 2021.
+
+Summary of Key Facts
+
+Founded: 2019, Tempe, Arizona. Flagship robot: Kestrel K2 with a 35 kg payload, 1.8 m/s top speed, and a swappable battery rated for 6 hours. Fleet software: Aviary, with the Roost charging scheduler. Pick accuracy: 99.6%. Safety system: Perch, lidar plus stereo camera, stops within 40 cm. Largest customer: Bluewater Grocers, 14 sites. Funding: 2024 Series B of $48 million led by Cairn Ventures. CTO: Mateo Villanueva.
