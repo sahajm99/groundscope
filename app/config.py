@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     agent_engine: str = "langgraph"  # "langgraph" (verified, nested LangSmith traces) | "loop" (fallback)
     max_subqueries: int = 3  # fan-out cap (parallel retrieval workers per question)
     tool_timeout_s: float = 60  # per MCP tool call; a hung branch must not hang the stream
-    eval_judge_model: str = "openai/gpt-oss-20b"  # evals judge: a different model than the agent
+    eval_judge_model: str = "qwen/qwen3.8-27b"  # evals judge: different family AND daily budget than the agent
 
     @property
     def llm_configured(self) -> bool:

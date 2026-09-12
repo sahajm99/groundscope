@@ -56,7 +56,7 @@ Two rules the design keeps deterministic on purpose:
 | Layer | Default |
 |---|---|
 | Agent brain | Groq `openai/gpt-oss-120b`, fallback `openai/gpt-oss-20b` (any OpenAI-compatible endpoint via `LLM_*`) |
-| Eval judge | Groq `openai/gpt-oss-20b` (`EVAL_JUDGE_MODEL`), a different model than the agent |
+| Eval judge | Groq `qwen/qwen3.8-27b` (`EVAL_JUDGE_MODEL`): a different model family and a separate daily token budget from the agent |
 | Embeddings | local fastembed `BAAI/bge-small-en-v1.5`, 384-dim (no key) |
 | Vector + metadata DB | Supabase Postgres + pgvector (any Postgres with pgvector works) |
 | Web search | Tavily |
