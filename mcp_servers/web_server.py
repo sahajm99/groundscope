@@ -9,7 +9,7 @@ try:
 except ImportError:
     from mcp_servers import _paths  # noqa: F401
 
-import anyio
+from anyio.to_thread import run_sync
 from mcp.server.fastmcp import FastMCP
 
 from app.config import settings
@@ -35,7 +35,7 @@ async def web_search(query: str, limit: int = 4) -> str:
     if not settings.web_search_configured:
         return json.dumps({"summary": "Web search is not configured.", "configured": False, "sources": []})
     limit = max(1, min(int(limit), MAX_LIMIT))
-    res = await anyio.to_thread.run_sync(_search, query, limit)
+    res = await run_sync(_search, query, limit)
     results = res.get("results", [])
     sources = [
         {"kind": "web", "label": r.get("title", "web result"), "detail": r.get("url", ""), "text": r.get("content", "")}

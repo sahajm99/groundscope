@@ -13,10 +13,10 @@ class Settings(BaseSettings):
     # LLM (agent brain) — OpenAI-compatible
     llm_api_key: str = ""
     llm_base_url: str = "https://api.groq.com/openai/v1"
-    llm_model: str = "llama-3.3-70b-versatile"
+    llm_model: str = "openai/gpt-oss-120b"
     # Model router / failover (tiered): primary -> smaller same-provider model ->
     # optional second provider (set fallback api key + base url, e.g. Gemini).
-    llm_fallback_model: str = "llama-3.1-8b-instant"
+    llm_fallback_model: str = "openai/gpt-oss-20b"
     llm_fallback_api_key: str = ""
     llm_fallback_base_url: str = ""
     # Circuit breaker
@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     max_tool_rounds: int = 2
     relevance_distance_threshold: float = 0.5  # calibrated for bge-small: relevant ~0.44, irrelevant ~0.61
     agent_engine: str = "langgraph"  # "langgraph" (verified, nested LangSmith traces) | "loop" (fallback)
+    max_subqueries: int = 3  # fan-out cap (parallel retrieval workers per question)
+    tool_timeout_s: float = 60  # per MCP tool call; a hung branch must not hang the stream
+    eval_judge_model: str = "openai/gpt-oss-20b"  # evals judge: a different model than the agent
 
     @property
     def llm_configured(self) -> bool:

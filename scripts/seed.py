@@ -10,11 +10,11 @@ import sys
 import uuid
 from pathlib import Path
 
-from app.ingestion.extract import extract_pages
-from app.ingestion.chunker import chunk_pages
-from app.ingestion.embedder import get_embedder
 from app import storage
 from app.config import settings
+from app.ingestion.chunker import chunk_pages
+from app.ingestion.embedder import get_embedder
+from app.ingestion.extract import extract_pages
 
 
 def main(path: str) -> None:

@@ -13,10 +13,13 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.tools import BaseTool, StructuredTool, ToolException
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from app.agent.mcp_registry import ServerSet
 
 log = logging.getLogger(__name__)
 
@@ -120,7 +123,7 @@ class ToolBus:
 
 
 _bus: ToolBus | None = None
-_servers = None
+_servers: ServerSet | None = None
 
 
 async def get_bus() -> ToolBus:

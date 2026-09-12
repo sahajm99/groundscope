@@ -17,7 +17,7 @@ try:
 except ImportError:
     from mcp_servers import _paths  # noqa: F401
 
-import anyio
+from anyio.to_thread import run_sync
 from mcp.server.fastmcp import FastMCP
 
 from app import storage
@@ -49,8 +49,8 @@ async def hybrid_search(
     score is the best cosine distance (lower is closer)."""
     sid = _check_session(session_id)
     limit = max(1, min(int(limit), MAX_LIMIT))
-    emb = query_embedding if query_embedding else await anyio.to_thread.run_sync(_embed, query)
-    hits, best = await anyio.to_thread.run_sync(storage.hybrid_search, sid, emb, query, limit)
+    emb = query_embedding if query_embedding else await run_sync(_embed, query)
+    hits, best = await run_sync(storage.hybrid_search, sid, emb, query, limit)
     sources = [
         {"kind": "doc", "label": f"{h.file_name} p.{h.page_number}", "detail": f"p.{h.page_number}", "text": h.text}
         for h in hits
@@ -69,7 +69,7 @@ async def metadata_query(session_id: str) -> str:
     """List the documents available to a session (uploads + global corpus).
     Returns JSON {summary, documents:[{file_name,pages,chunk_count,uploaded_at}]}."""
     sid = _check_session(session_id)
-    docs = await anyio.to_thread.run_sync(storage.list_documents, sid)
+    docs = await run_sync(storage.list_documents, sid)
     if not docs:
         summary = "No documents available in this session."
     else:

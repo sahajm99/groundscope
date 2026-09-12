@@ -34,6 +34,7 @@ def get_or_create_session(request: Request, response: Response) -> str:
     if not _valid_sid(sid):
         sid = uuid.uuid4().hex
         response.set_cookie(COOKIE, sid, max_age=settings.session_ttl_seconds, httponly=True, samesite="lax")
+    assert sid is not None
     _sessions[sid] = time.time()
     return sid
 

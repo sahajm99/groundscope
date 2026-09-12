@@ -47,6 +47,11 @@
   .step .links a:hover { text-decoration:underline; }
   .placeholder { color:var(--muted); font:13px ui-monospace,monospace; padding:8px 2px; }
   .step .preview { margin-top:5px; padding:6px 8px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--muted); font-size:12px; font-style:italic; line-height:1.4; }
+  .lane { border:1px dashed var(--border); border-radius:8px; padding:6px 8px; margin:6px 0 }
+  .lane-h { font:11px ui-monospace,monospace; color:var(--muted); margin-bottom:4px; letter-spacing:.02em }
+  .lane[data-branch="0"] { border-color:#7c3aed } .lane[data-branch="0"] .lane-h { color:#7c3aed }
+  .lane[data-branch="1"] { border-color:#0891b2 } .lane[data-branch="1"] .lane-h { color:#0891b2 }
+  .lane[data-branch="2"] { border-color:#d97706 } .lane[data-branch="2"] .lane-h { color:#d97706 }
 </style>
 </head>
 <body>
