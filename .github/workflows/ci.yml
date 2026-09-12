@@ -64,7 +64,7 @@ jobs:
       - name: tests (unit + integration + smoke)
         run: pytest -q
       - name: evals (quality gate)
-        run: python -m evals.run_evals --report eval-report.json
+        run: python -m evals.run_evals --report eval-report.json --pace 8   # free-tier per-minute caps
       - name: upload eval report
         if: always()
         uses: actions/upload-artifact@v4

@@ -44,6 +44,39 @@ class _Breaker:
 _breaker = _Breaker(settings.breaker_threshold, settings.breaker_cooldown_s)
 _clients: dict = {}
 
+# Per-endpoint request throttle. Gemini's free tier allows 15 requests/minute; when both
+# Groq tiers are out of daily budget the whole agent plus the eval judge fall through to it,
+# so the client itself must stay under the cap instead of collecting 429s.
+_throttles: dict[str, list[float]] = {}
+_RPM_CAPS = {"generativelanguage.googleapis.com": 12}
+RATE_LIMIT_RETRY_PAUSE_S = 35.0
+
+
+def _rpm_cap(base_url: str) -> int | None:
+    for host, cap in _RPM_CAPS.items():
+        if host in base_url:
+            return cap
+    return None
+
+
+def _throttle(base_url: str, cap: int) -> None:
+    """Block until fewer than `cap` requests were started on this endpoint in the last minute."""
+    now = time.monotonic()
+    stamps = [t for t in _throttles.get(base_url, []) if now - t < 60.0]
+    if len(stamps) >= cap:
+        wait = 60.0 - (now - stamps[0]) + 0.5
+        if wait > 0:
+            time.sleep(wait)
+        now = time.monotonic()
+        stamps = [t for t in stamps if now - t < 60.0]
+    stamps.append(now)
+    _throttles[base_url] = stamps
+
+
+def _is_rate_limit(e: BaseException) -> bool:
+    s = f"{type(e).__name__} {e}".lower()
+    return "429" in s or "rate limit" in s or "ratelimit" in s or "resource_exhausted" in s
+
 
 def _client(base_url: str, api_key: str):
     if base_url not in _clients:
@@ -95,18 +128,28 @@ def complete_ex(
     last_err: Exception | None = None
     for i in range(start, len(tiers)):
         tier_model, base, key = tiers[i]
-        try:
-            resp = _client(base, key).chat.completions.create(
-                model=tier_model, temperature=temperature, max_tokens=max_tokens, messages=messages,
-            )
-            if i == 0 and not model:
-                _breaker.record_success()
-            return (resp.choices[0].message.content or "").strip(), tier_model
-        except Exception as e:  # noqa: BLE001
-            last_err = e
-            if i == 0 and not model:
-                _breaker.record_failure()
-            continue
+        is_last = i == len(tiers) - 1
+        for attempt in range(2):
+            cap = _rpm_cap(base)
+            if cap:
+                _throttle(base, cap)
+            try:
+                resp = _client(base, key).chat.completions.create(
+                    model=tier_model, temperature=temperature, max_tokens=max_tokens, messages=messages,
+                )
+                if i == 0 and not model:
+                    _breaker.record_success()
+                return (resp.choices[0].message.content or "").strip(), tier_model
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                if i == 0 and not model:
+                    _breaker.record_failure()
+                # The last tier gets one more try after a rate-limit window; earlier tiers
+                # fail over immediately instead of waiting.
+                if is_last and attempt == 0 and _is_rate_limit(e):
+                    time.sleep(RATE_LIMIT_RETRY_PAUSE_S)
+                    continue
+                break
     raise last_err if last_err else RuntimeError("no LLM tier available")
 
 

@@ -45,9 +45,10 @@ def test_strict_model_does_not_fall_back(monkeypatch):
     log: list[str] = []
     monkeypatch.setattr(llm, "_client", lambda base, key: Failing(log))
     monkeypatch.setattr(llm.settings, "llm_api_key", "k")
+    monkeypatch.setattr(llm.time, "sleep", lambda s: None)  # the last tier retries once after a 429
     with pytest.raises(RuntimeError):
         llm.complete("s", "u", model="judge-model", strict_model=True)
-    assert log == ["judge-model"]
+    assert set(log) == {"judge-model"} and len(log) == 2  # retried the SAME model, never fell back
 
 
 def test_complete_ex_reports_the_model_that_answered(monkeypatch):
@@ -90,3 +91,35 @@ def test_complete_ex_can_target_a_specific_endpoint(monkeypatch):
     monkeypatch.setattr(llm, "_client", client)
     text, used = llm.complete_ex("s", "u", model="judge-x", strict_model=True, base_url="https://j/", api_key="jk")
     assert (seen["base"], seen["key"], used) == ("https://j/", "jk", "judge-x")
+
+
+def test_throttle_keeps_requests_per_minute_under_the_cap(monkeypatch):
+    """Gemini's free tier allows 15 requests/minute; the 16th call in a minute must wait."""
+    now = {"t": 1000.0}
+    slept = []
+    monkeypatch.setattr(llm.time, "monotonic", lambda: now["t"])
+    monkeypatch.setattr(llm.time, "sleep", lambda s: (slept.append(s), now.__setitem__("t", now["t"] + s)))
+    llm._throttles.clear()
+    for _ in range(12):
+        llm._throttle("https://generativelanguage.googleapis.com/v1beta/openai/", 12)
+    assert not slept
+    llm._throttle("https://generativelanguage.googleapis.com/v1beta/openai/", 12)
+    assert slept and 0 < slept[0] <= 61  # waits out the minute (+0.5 s buffer)
+
+
+def test_last_tier_retries_once_after_a_rate_limit(monkeypatch):
+    calls = {"n": 0}
+
+    class Flaky(FakeClient):
+        def _create(self, **kw):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("Error code: 429 - RESOURCE_EXHAUSTED")
+            return super()._create(**kw)
+
+    slept = []
+    monkeypatch.setattr(llm.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(llm, "_client", lambda base, key: Flaky([]))
+    monkeypatch.setattr(llm.settings, "llm_api_key", "k")
+    text, used = llm.complete_ex("s", "u", model="only", strict_model=True)
+    assert text == '{"ok": true}' and calls["n"] == 2 and slept and slept[0] >= 20
