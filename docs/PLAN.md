@@ -3,6 +3,25 @@
 Updated 2026-09-12. This is the working plan; `docs/PROGRESS.md` records what is proven,
 `docs/DECISIONS.md` why, `docs/BLOCKED.md` what needs a human.
 
+## Status as of 2026-09-12 19:00 UTC
+
+| Area | Done | Proof |
+|---|---|---|
+| 2.0a MCP tool bus | yes | live `/health` lists 3 servers, 7 tools; 90+ tests |
+| 2.0b Send fan-out + lanes | yes | lanes screenshot; LangSmith run 01a095df with overlapping worker spans |
+| 2.0c golden set + judge + CI gate | yes | PR run 34704978970 green; 3 regressions caught red |
+| Hardening (locks, timeouts, caps, XSS) | yes | tests/test_hardening.py |
+| Merged to main, Render serving v2 | yes | merge 574496e; deploy 2def8d4 Live |
+| Render env (model names, Gemini key) | yes (you, 18:43 UTC) | live grounded answer with citations |
+| Live grounded question | yes | resume question answered from the PDF |
+| Live web-fallback question | pending | quotas capped tonight |
+| Green badge on main | pending | runs 34707065998 / 34707733909 red (flake fixed; quota) |
+| Rate-limit fix (per-minute vs per-day) | committed locally (91b6863), not pushed | 97 tests; push when budgets return |
+| /canary, /document-release | pending | after badge |
+| Portfolio `projects.ts` pushed | pending (drafted, typechecks) | |
+| Seed a public document into prod | pending (your pick) | prod DB has sample.txt only |
+| Cerebras capacity | not possible (PayGo, 402) | docs/BLOCKED.md |
+
 ## Goal (confirmed 2026-09-12)
 
 Groundscope is a $0, open agent harness that answers questions with citations to real
