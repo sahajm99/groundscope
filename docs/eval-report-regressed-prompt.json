@@ -1,0 +1,201 @@
+{
+  "passed": false,
+  "summary": {
+    "cases": 8,
+    "hard_check_failures": 0,
+    "faithfulness": 0.7292,
+    "answer_relevance": 0.95,
+    "context_precision": 0.2943,
+    "checks_pass_rate": 1.0,
+    "agent_errors": 0,
+    "judge_errors": 0,
+    "failed_thresholds": [
+      "faithfulness"
+    ],
+    "agent_model": "openai/gpt-oss-120b",
+    "judge_model": "gemini-3.5-flash-lite",
+    "git_sha": ""
+  },
+  "cases": [
+    {
+      "id": "g01",
+      "kind": "grounded",
+      "question": "What is the name of Zephyr Logistics' proprietary routing engine and what algorithm does its lane optimization stage use?",
+      "answer": "Zephyr Logistics' proprietary routing engine is called \"Tailwind\", and its lane optimization stage uses a modified Clarke-Wright savings algorithm tuned for hub-and-spoke networks [sample.txt p.1]. The Clarke-Wright savings algorithm was originally developed in 1964 and remains one of the most widely used heuristic methods for vehicle routing problems.",
+      "citations": [
+        "WorkWave Routing Engine Recognized for Powerful, Flexible, and Proprietary Algorithm",
+        "sample.txt p.1",
+        "WorkWave Routing Engine Recognized for Powerful, Flexible, and Proprietary Algorithm",
+        "zephyr-logistics.txt p.1",
+        "WorkWave Routing Engine Recognized for Powerful, Flexible, and Proprietary Algorithm",
+        "WorkWave Routing Engine Recognized for Powerful, Flexible, and Proprietary Algorithm",
+        "halcyon-robotics.txt p.1"
+      ],
+      "contexts": 10,
+      "branches": 2,
+      "faithfulness": 0.6666666666666666,
+      "answer_relevance": 0.8,
+      "context_precision": 0.2,
+      "claims": 3,
+      "failed_checks": [],
+      "judge_error": null,
+      "ms": 62344,
+      "judge_model_used": "gemini-3.5-flash-lite"
+    },
+    {
+      "id": "g02",
+      "kind": "grounded",
+      "question": "At what combined vibration and oil-temperature score does Zephyr's predictive-maintenance model flag a truck for inspection?",
+      "answer": "Zephyr's predictive-maintenance model flags a truck for inspection when the combined vibration and oil-temperature score exceeds 0.72 [zephyr-logistics.txt p.1, sample.txt p.1]. Predictive maintenance models in commercial vehicle fleets often incorporate machine learning algorithms to anticipate component wear before critical failures happen.",
+      "citations": [
+        "zephyr-logistics.txt p.1",
+        "sample.txt p.1",
+        "halcyon-robotics.txt p.1",
+        "meridian-health.txt p.1"
+      ],
+      "contexts": 6,
+      "branches": 1,
+      "faithfulness": 0.5,
+      "answer_relevance": 1.0,
+      "context_precision": 0.3333333333333333,
+      "claims": 2,
+      "failed_checks": [],
+      "judge_error": null,
+      "ms": 11843,
+      "judge_model_used": "gemini-3.5-flash-lite"
+    },
+    {
+      "id": "g04",
+      "kind": "grounded",
+      "question": "What is Zephyr's fuel program called and how much fuel per mile did it save?",
+      "answer": "Zephyr's fuel program is called \"Slipstream,\" and it saved 7.4% fuel per mile compared with the year before the program launched [zephyr-logistics.txt p.1, zephyr-logistics.txt p.1]. Modern heavy-duty freight trucks can burn thousands of gallons of diesel fuel annually, making even fractional percentage improvements highly valuable for fleet operators.",
+      "citations": [
+        "zephyr-logistics.txt p.1",
+        "sample.txt p.1",
+        "meridian-health.txt p.1",
+        "halcyon-robotics.txt p.1"
+      ],
+      "contexts": 7,
+      "branches": 2,
+      "faithfulness": 0.6666666666666666,
+      "answer_relevance": 1.0,
+      "context_precision": 0.42857142857142855,
+      "claims": 3,
+      "failed_checks": [],
+      "judge_error": null,
+      "ms": 2875,
+      "judge_model_used": "gemini-3.5-flash-lite"
+    },
+    {
+      "id": "g06",
+      "kind": "grounded",
+      "question": "What is the payload capacity and top speed of Halcyon Robotics' Kestrel K2 robot?",
+      "answer": "The Kestrel K2 robot has a payload capacity of 35 kg and a top speed of 1.8 m/s [halcyon-robotics.txt p.1]. In addition to these specifications, the Kestrel K2 features a swappable battery rated for 6 hours of continuous operation [halcyon-robotics.txt p.1].",
+      "citations": [
+        "halcyon-robotics.txt p.1",
+        "zephyr-logistics.txt p.1"
+      ],
+      "contexts": 6,
+      "branches": 2,
+      "faithfulness": 1.0,
+      "answer_relevance": 1.0,
+      "context_precision": 0.3333333333333333,
+      "claims": 3,
+      "failed_checks": [],
+      "judge_error": null,
+      "ms": 3827,
+      "judge_model_used": "gemini-3.5-flash-lite"
+    },
+    {
+      "id": "g07",
+      "kind": "grounded",
+      "question": "What pick accuracy does Halcyon Robotics report across its installed base?",
+      "answer": "Halcyon Robotics reports a pick accuracy of 99.6% across its installed base, which is measured as the share of picked units that match the ordered SKU and quantity at the packing station [halcyon-robotics.txt p.1]. Warehouse automation companies often benchmark their robotic pick accuracy against human error rates, which typically hover around 1 to 3 percent in manual environments.",
+      "citations": [
+        "halcyon-robotics.txt p.1",
+        "zephyr-logistics.txt p.1"
+      ],
+      "contexts": 6,
+      "branches": 1,
+      "faithfulness": 0.6666666666666666,
+      "answer_relevance": 0.8,
+      "context_precision": 0.16666666666666666,
+      "claims": 3,
+      "failed_checks": [],
+      "judge_error": null,
+      "ms": 3109,
+      "judge_model_used": "gemini-3.5-flash-lite"
+    },
+    {
+      "id": "g10",
+      "kind": "grounded",
+      "question": "What is the average wait time for a visit on Meridian Health Co-op's telehealth platform, and what is the platform called?",
+      "answer": "The average wait time for a visit on Meridian Health Co-op's telehealth platform is 9 minutes, and the platform is called Lantern [meridian-health.txt p.1]. Telehealth has grown rapidly since the COVID-19 pandemic, expanding access to care in remote and underserved rural populations across the United States.",
+      "citations": [
+        "meridian-health.txt p.1",
+        "halcyon-robotics.txt p.1",
+        "zephyr-logistics.txt p.1"
+      ],
+      "contexts": 7,
+      "branches": 2,
+      "faithfulness": 0.6666666666666666,
+      "answer_relevance": 1.0,
+      "context_precision": 0.14285714285714285,
+      "claims": 3,
+      "failed_checks": [],
+      "judge_error": null,
+      "ms": 2844,
+      "judge_model_used": "gemini-3.5-flash-lite"
+    },
+    {
+      "id": "g14",
+      "kind": "multi",
+      "question": "What is Zephyr Logistics' routing engine called, and what is the name of Halcyon Robotics' flagship robot?",
+      "answer": "Zephyr Logistics' routing engine is called \"Tailwind\" [sample.txt p.1, zephyr-logistics.txt p.1], and Halcyon Robotics' flagship robot is the Kestrel K2 [halcyon-robotics.txt p.1]. Logistics routing optimization engines like Tailwind often integrate geographic information systems to map efficient vehicle paths.",
+      "citations": [
+        "sample.txt p.1",
+        "halcyon-robotics.txt p.1",
+        "zephyr-logistics.txt p.1",
+        "meridian-health.txt p.1"
+      ],
+      "contexts": 8,
+      "branches": 2,
+      "faithfulness": 0.6666666666666666,
+      "answer_relevance": 1.0,
+      "context_precision": 0.5,
+      "claims": 3,
+      "failed_checks": [],
+      "judge_error": null,
+      "ms": 2952,
+      "judge_model_used": "gemini-3.5-flash-lite"
+    },
+    {
+      "id": "g16",
+      "kind": "web",
+      "question": "What is the capital of Australia?",
+      "answer": "The capital of Australia is Canberra [https://youtooproject.com/en/blog/australia-en/capital-of-australia-canberra, https://en.wikipedia.org/wiki/Canberra]. Canberra was selected as the capital following a compromise between Sydney and Melbourne, both of which vied for the title after the Commonwealth Parliament was established in 1901.",
+      "citations": [
+        "What is the capital of Australia? If you thought it was Sydney, keep on reading",
+        "what's the capital of Australia? It's Canberra, a pre-planned city with ...",
+        "Sydney isn't the capital of Australia!",
+        "Canberra"
+      ],
+      "contexts": 4,
+      "branches": 1,
+      "faithfulness": 1.0,
+      "answer_relevance": 1.0,
+      "context_precision": 0.25,
+      "claims": 2,
+      "failed_checks": [],
+      "judge_error": null,
+      "ms": 52547,
+      "judge_model_used": "gemini-3.5-flash-lite"
+    }
+  ],
+  "thresholds": {
+    "faithfulness": 0.85,
+    "relevance": 0.7,
+    "precision": 0.25,
+    "checks": 0.85
+  }
+}

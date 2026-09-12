@@ -87,3 +87,16 @@ Resumed sessions: read this, then `docs/DECISIONS.md` and `docs/BLOCKED.md`, the
   0.3443 (threshold 0.25, calibrated; DECISIONS 24), agent_errors 0, judge_errors 0.
   Agent `openai/gpt-oss-120b`, judge `gemini-3.5-flash-lite` (Gemini key added by Sahaj).
 - Eight runs were needed; each of the first seven exposed a real defect (see DECISIONS 17-24).
+
+## Phase 4: CI green + regression proof (2026-09-12)
+- Branch CI green: https://github.com/sahajm99/groundscope/actions/runs/34703733261
+  (lint, pyright, seed, pytest incl. real-stack smoke, evals exit 0, eval-report artifact,
+  docker build). First push failed only on pyright's unresolved dormant `langfuse` import.
+- Three deliberate regressions, each caught by the first CI layer able to see it:
+  1. threshold forced to 0.0 (nothing grounds): run 34704049355 red at the smoke tests.
+  2. `MAX_SOURCES = 1` (recall collapse): run 34704211176 red at the unit tests.
+  3. prompt told to add a fabricated sentence: run 34704354251 red at the smoke tests.
+- Eval-gate-specific proof (regression 3 run locally, `--only` 8 cases, faithfulness judge
+  on Gemini): deterministic checks 8/8, hard failures 0, **faithfulness 0.73 < 0.85 -> FAIL**.
+  Report: `docs/eval-report-regressed-prompt.json`. Only the LLM judge can see this one.
+- All three regressions reverted (commits `test(ci): ...` and their reverts).
