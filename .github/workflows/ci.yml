@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main, "v2.*"]
+    branches: [main]   # PR commits run once (pull_request); two parallel runs share one free-tier quota
   pull_request:
   workflow_dispatch:
 
