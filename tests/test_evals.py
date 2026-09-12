@@ -150,3 +150,21 @@ def test_agent_runner_reuses_one_event_loop(monkeypatch):
     run_case({"question": "b"})
     assert len(set(loops)) == 1
     R.shutdown_runner()
+
+
+def test_metadata_cases_skip_the_judge_but_keep_deterministic_checks():
+    cases = [{"id": "m", "question": "What documents do I have?", "kind": "metadata", "expect_grounded": False,
+              "must_contain": ["zephyr"], "reference": None}]
+    meta = lambda case: ([], {"answer": "Documents: zephyr-logistics.txt", "citations": []}, {"collected": []})  # noqa: E731
+    calls = []
+
+    def spy(system, user):
+        calls.append(1)
+        return judge_ok(system, user)
+
+    rep = R.evaluate(cases, meta, spy, TH, pace=0)
+    assert calls == []
+    assert rep.cases[0]["faithfulness"] is None and rep.cases[0]["answer_relevance"] is None
+    assert rep.cases[0]["failed_checks"] == []
+    assert rep.summary["faithfulness"] is None  # no judged cases -> reported as None, and the gate fails
+    assert not rep.passed

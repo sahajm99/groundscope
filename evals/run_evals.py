@@ -79,7 +79,11 @@ def evaluate(cases: list[dict], run_case: RunCase, judge: J.Judge, th: Threshold
         ans = str(answer.get("answer", ""))
         cits = list(answer.get("citations", []) or [])
         ctx = _contexts(final)
-        scores = J.score_case(str(case["question"]), ans, ctx, judge, case.get("reference"))
+        if case.get("kind") == "metadata":
+            # Deterministic route with no retrieved contexts: nothing for the judge to score.
+            scores = J.CaseScores(faithfulness=None, answer_relevance=None, context_precision=None)  # type: ignore[arg-type]
+        else:
+            scores = J.score_case(str(case["question"]), ans, ctx, judge, case.get("reference"))
         failed = J.deterministic_checks(case, ans, cits)
         row.update(
             answer=ans[:600], citations=[c.get("label") for c in cits][:8], contexts=len(ctx),

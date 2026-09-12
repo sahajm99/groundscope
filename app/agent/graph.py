@@ -36,6 +36,7 @@ from app.ingestion.embedder import get_embedder
 log = logging.getLogger(__name__)
 
 REFUSAL_PREFIX = "I can't ground an answer to that"
+KNOWLEDGE_PATH_TOOLS = frozenset({"web_search"})  # invoked by the graph, never offered as an "action"
 
 __all__ = ["run_agent_graph", "run_agent_graph_full", "get_bus", "ToolError", "ToolUnavailable"]
 
@@ -87,6 +88,42 @@ async def _call(name: str, **args: Any) -> dict:
     return await asyncio.wait_for(bus.call(name, **args), settings.tool_timeout_s)
 
 
+def _citations(collected: list) -> list[dict]:
+    """One citation per (kind, label, url/page), in first-seen order."""
+    out: list[dict] = []
+    seen: set = set()
+    for s in collected:
+        k = (s.kind, s.label, s.detail)
+        if k not in seen:
+            seen.add(k)
+            out.append({"label": s.label, "kind": s.kind, "detail": s.detail})
+    return out
+
+
+def _chat_model(tools: list | None, model: str):
+    """Seam for the ReAct worker (tests fake it). Tools bound when given."""
+    from langchain_openai import ChatOpenAI
+    from pydantic import SecretStr
+
+    llm = ChatOpenAI(model=model, base_url=settings.llm_base_url, api_key=SecretStr(settings.llm_api_key), temperature=0)
+    return llm.bind_tools(tools) if tools else llm
+
+
+async def _chat_with_failover(msgs: list, tools: list | None):
+    """Primary model, then the fallback model (the ReAct path bypasses llm.complete's router)."""
+    models = [settings.llm_model]
+    if settings.llm_fallback_model and settings.llm_fallback_model != settings.llm_model:
+        models.append(settings.llm_fallback_model)
+    last: Exception | None = None
+    for m in models:
+        try:
+            return await _chat_model(tools, m).ainvoke(msgs)
+        except Exception as e:  # noqa: BLE001
+            last = e
+            log.warning("chat model %s failed: %s: %s", m, type(e).__name__, e)
+    raise last if last else RuntimeError("no chat model available")
+
+
 def _safe(e: BaseException) -> str:
     """What a visitor may see about a failure: the type only. The full text is logged."""
     log.warning("tool failure: %s: %s", type(e).__name__, e)
@@ -96,8 +133,9 @@ def _safe(e: BaseException) -> str:
 # -- Node: planner / supervisor -------------------------------------------------
 _PLAN_SYS = (
     'Return JSON {{"route": "tools"|"knowledge", "subqueries": [...]}}. '
-    'Use "tools" ONLY if answering requires one of these action tools: {desc}. '
-    'Use "knowledge" for questions about the user\'s documents or general facts. '
+    'Use "tools" ONLY if answering requires computing or executing something with one of these action tools: {desc}. '
+    'Use "knowledge" for anything answerable by reading: questions about the user\'s documents, companies, '
+    "people, products, or general facts (the knowledge path searches documents and the web itself). "
     'For "knowledge", split the question into at most {cap} independent sub-questions ONLY when it asks '
     'about several distinct things (e.g. "compare X and Y", "A, and also B"); otherwise return a single '
     "item containing the question itself. Each sub-question must be a self-contained search query."
@@ -125,7 +163,10 @@ async def planner_node(state: S, writer: StreamWriter) -> dict:
         except Exception as e:  # noqa: BLE001
             _safe(e)
             open_tools = []
-        desc = "; ".join(f"{t.name}: {(t.description or '')[:80]}" for t in open_tools) or "none"
+        # web_search is part of the knowledge path (deterministic fallback), not an action tool:
+        # advertising it here sent plain factual questions to the ReAct worker.
+        action_tools = [t for t in open_tools if t.name not in KNOWLEDGE_PATH_TOOLS]
+        desc = "; ".join(f"{t.name}: {(t.description or '')[:80]}" for t in action_tools) or "none"
         try:
             d = await asyncio.to_thread(complete_json, _PLAN_SYS.format(desc=desc, cap=settings.max_subqueries), q)
             route = d.get("route") if d.get("route") in ("tools", "knowledge") else "knowledge"
@@ -153,8 +194,6 @@ def _plan_branch(state: S) -> str:
 # -- Node: tool-worker (ReAct over open MCP tools + session-scoped search) ------
 async def tool_worker_node(state: S, writer: StreamWriter) -> dict:
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-    from langchain_openai import ChatOpenAI
-    from pydantic import SecretStr
 
     bus = await get_bus()
     bound = bus.open_tools() + bus.scoped_tools(state["session_id"], _embed)
@@ -164,10 +203,6 @@ async def tool_worker_node(state: S, writer: StreamWriter) -> dict:
         writer({"kind": "answer", "payload": {"answer": ans, "citations": []}})
         return {"answer": ans}
 
-    llm = ChatOpenAI(
-        model=settings.llm_model, base_url=settings.llm_base_url,
-        api_key=SecretStr(settings.llm_api_key), temperature=0,
-    ).bind_tools(bound)
     tool_map = {t.name: t for t in bound}
     msgs: list = [
         SystemMessage("You are an agent that answers using the provided tools. "
@@ -178,7 +213,7 @@ async def tool_worker_node(state: S, writer: StreamWriter) -> dict:
     citations: list = []
     ai: AIMessage | None = None
     for _ in range(settings.max_tool_rounds + 1):
-        msg = await llm.ainvoke(msgs)
+        msg = await _chat_with_failover(msgs, bound)
         ai = msg if isinstance(msg, AIMessage) else AIMessage(content=str(msg.content))
         msgs.append(ai)
         if not ai.tool_calls:
@@ -199,6 +234,12 @@ async def tool_worker_node(state: S, writer: StreamWriter) -> dict:
             msgs.append(ToolMessage(content=str(result), tool_call_id=tc["id"] or ""))
 
     ans = ai.content if (ai and isinstance(ai.content, str)) else str(ai.content if ai else "")
+    if (ai is not None and ai.tool_calls) or not ans.strip():
+        # Rounds ran out mid-tool-call, or the model returned no text: ask for a final answer
+        # with no tools bound so the visitor never sees an empty reply.
+        msgs.append(HumanMessage("Give your final answer now, using the tool results above. Do not call tools."))
+        final = await _chat_with_failover(msgs, None)
+        ans = final.content if isinstance(final.content, str) else str(final.content)
     _emit(writer, state, type="synthesis", summary="Answered using tools.")
     writer({"kind": "answer", "payload": {"answer": ans, "citations": citations}})
     return {"answer": ans}
@@ -280,7 +321,8 @@ def aggregate_node(state: S, writer: StreamWriter) -> dict:
     collected: list = []
     for br in branches:
         for s in br["sources"]:
-            k = (s.kind, s.label, s.detail)
+            # Chunks of the same page share a label; key on the text too so distinct chunks survive.
+            k = (s.kind, s.label, s.detail, s.text[:160])
             if k not in seen:
                 seen.add(k)
                 collected.append(s)
@@ -315,7 +357,7 @@ def synth_node(state: S, writer: StreamWriter) -> dict:
         writer({"kind": "answer", "payload": {"answer": ans, "citations": []}})
         return {"answer": ans, "citations": []}
     _emit(writer, state, type="synthesis", summary="Synthesized a grounded answer.")
-    citations = [{"label": s.label, "kind": s.kind, "detail": s.detail} for s in collected]
+    citations = _citations(collected)
     writer({"kind": "answer", "payload": {"answer": ans, "citations": citations}})
     return {"answer": ans, "citations": citations}
 

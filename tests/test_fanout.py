@@ -124,3 +124,22 @@ async def test_branch_timeout_degrades(monkeypatch):
     events, answer = await run("slow", bus, monkeypatch)
     assert any("Retrieval unavailable (TimeoutError" in e["summary"] for e in events)
     assert answer["citations"][0]["kind"] == "web"
+
+
+async def test_different_chunks_with_the_same_page_label_all_reach_synthesis(monkeypatch):
+    """Found by the first real eval run: dedupe by (kind, label, detail) collapsed every chunk
+    of a one-page document into one, so the chunk holding the answer was dropped."""
+    monkeypatch.setattr(graph, "complete_json", _plan(["A"]))
+    docs = [dict(DOC, text="chunk one about Slipstream"), dict(DOC, text="chunk two about Northstar")]
+    bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.2, "sources": docs}})
+    captured = {}
+
+    def fake_complete(system, user, **kw):
+        captured["user"] = user
+        return "ANSWER [sample.txt p.1]"
+
+    monkeypatch.setattr(graph, "complete", fake_complete)
+    _, answer = await run("A", bus, monkeypatch)
+    assert "chunk one about Slipstream" in captured["user"]
+    assert "chunk two about Northstar" in captured["user"]
+    assert answer["citations"] == [{"label": "sample.txt p.1", "kind": "doc", "detail": "p.1"}]  # one citation per page

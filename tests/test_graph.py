@@ -128,3 +128,71 @@ async def test_refusal_answer_carries_no_citations(monkeypatch):
     assert answer["answer"].startswith("I can't ground an answer")
     assert answer["citations"] == []
     assert any(e["type"] == "refusal" for e in events)
+
+
+def _tool(name):
+    from langchain_core.tools import StructuredTool
+
+    async def coro(**kw):
+        return "4"
+
+    return StructuredTool.from_function(coroutine=coro, name=name, description=f"{name} desc", infer_schema=False)
+
+
+async def test_planner_lists_only_action_tools_not_web_search(monkeypatch):
+    """Found by the first real eval run: with web_search advertised as an action tool the planner
+    sent plain factual questions to the ReAct worker instead of the grounded knowledge path."""
+    seen = {}
+
+    def fake_json(system, user):
+        seen["system"] = system
+        return {"route": "knowledge", "subqueries": []}
+
+    monkeypatch.setattr(graph, "complete_json", fake_json)
+    bus = FakeBus({"hybrid_search": lambda **kw: {"summary": "", "score": 0.2, "sources": [DOC]}})
+    bus.open_tools = lambda: [_tool("web_search"), _tool("calculator")]
+    await run("q", bus, monkeypatch)
+    assert "calculator" in seen["system"]
+    assert "web_search" not in seen["system"]
+
+
+class FakeChat:
+    """Scripted chat model: with tools bound it keeps asking for the calculator; without
+    tools it answers. Raises for a given model name to exercise failover."""
+
+    def __init__(self, tools, model, log, fail_model=None):
+        self.tools, self.model, self.log, self.fail_model = tools, model, log, fail_model
+
+    async def ainvoke(self, msgs):
+        from langchain_core.messages import AIMessage
+
+        self.log.append((self.model, bool(self.tools)))
+        if self.model == self.fail_model:
+            raise RuntimeError("429 rate limit")
+        if self.tools:
+            return AIMessage(content="", tool_calls=[{"name": "calculator", "args": {"expression": "2+2"}, "id": "c1"}])
+        return AIMessage(content="FINAL 4")
+
+
+async def test_tool_worker_synthesizes_a_final_answer_when_rounds_run_out(monkeypatch):
+    log = []
+    monkeypatch.setattr(graph, "complete_json", lambda s, u: {"route": "tools", "subqueries": []})
+    monkeypatch.setattr(graph, "_chat_model", lambda tools, model: FakeChat(tools, model, log))
+    bus = FakeBus({})
+    bus.open_tools = lambda: [_tool("calculator")]
+    events, answer = await run("2+2?", bus, monkeypatch)
+    assert answer["answer"] == "FINAL 4"
+    assert sum(1 for e in events if e["type"] == "tool_call") == graph.settings.max_tool_rounds + 1
+    assert log[-1][1] is False  # the final call had no tools bound
+
+
+async def test_tool_worker_fails_over_to_the_fallback_model(monkeypatch):
+    log = []
+    monkeypatch.setattr(graph, "complete_json", lambda s, u: {"route": "tools", "subqueries": []})
+    monkeypatch.setattr(graph, "_chat_model",
+                        lambda tools, model: FakeChat(tools, model, log, fail_model=graph.settings.llm_model))
+    bus = FakeBus({})
+    bus.open_tools = lambda: [_tool("calculator")]
+    _, answer = await run("2+2?", bus, monkeypatch)
+    assert answer["answer"] == "FINAL 4"
+    assert any(m == graph.settings.llm_fallback_model for m, _ in log)
