@@ -64,3 +64,29 @@ def test_complete_ex_reports_the_model_that_answered(monkeypatch):
     monkeypatch.setattr(llm.settings, "llm_api_key", "k")
     text, used = llm.complete_ex("s", "u")
     assert used == llm.settings.llm_fallback_model and text == '{"ok": true}'
+
+
+def test_gemini_key_adds_a_third_tier_on_its_own_endpoint(monkeypatch):
+    monkeypatch.setattr(llm.settings, "gemini_api_key", "g")
+    monkeypatch.setattr(llm.settings, "llm_fallback_api_key", "")
+    tiers = llm._tiers()
+    assert tiers[-1] == (llm.settings.gemini_model, llm.settings.gemini_base_url, "g")
+    assert len(tiers) == 3
+
+
+def test_no_gemini_key_means_no_third_tier(monkeypatch):
+    monkeypatch.setattr(llm.settings, "gemini_api_key", "")
+    monkeypatch.setattr(llm.settings, "llm_fallback_api_key", "")
+    assert len(llm._tiers()) == 2
+
+
+def test_complete_ex_can_target_a_specific_endpoint(monkeypatch):
+    seen = {}
+
+    def client(base, key):
+        seen["base"], seen["key"] = base, key
+        return FakeClient([])
+
+    monkeypatch.setattr(llm, "_client", client)
+    text, used = llm.complete_ex("s", "u", model="judge-x", strict_model=True, base_url="https://j/", api_key="jk")
+    assert (seen["base"], seen["key"], used) == ("https://j/", "jk", "judge-x")

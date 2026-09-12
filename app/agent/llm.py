@@ -69,21 +69,25 @@ def _tiers() -> list[tuple[str, str, str]]:
     if settings.llm_fallback_api_key and settings.llm_fallback_base_url:
         tiers.append((settings.llm_fallback_model or settings.llm_model,
                       settings.llm_fallback_base_url, settings.llm_fallback_api_key))
+    if settings.gemini_api_key:
+        tiers.append((settings.gemini_model, settings.gemini_base_url, settings.gemini_api_key))
     return tiers
 
 
 def complete_ex(
     system: str, user: str, temperature: float = 0.2, max_tokens: int = 700,
     model: str | None = None, strict_model: bool = False,
+    base_url: str | None = None, api_key: str | None = None,
 ) -> tuple[str, str]:
     """Route through the tiers; return (text, model that answered).
 
-    An explicit `model` (e.g. the eval judge) becomes the first tier on the primary provider,
-    with the configured tiers as fallbacks; `strict_model=True` disables the fallbacks so a
-    judge can never silently become the agent model."""
+    An explicit `model` (e.g. the eval judge) becomes the first tier, on `base_url`/`api_key`
+    when given (a different provider) or on the primary provider otherwise, with the
+    configured tiers as fallbacks; `strict_model=True` disables the fallbacks so a judge can
+    never silently become the agent model."""
     tiers = _tiers()
     if model:
-        tiers = [(model, settings.llm_base_url, settings.llm_api_key)]
+        tiers = [(model, base_url or settings.llm_base_url, api_key or settings.llm_api_key)]
         if not strict_model:
             tiers += [t for t in _tiers() if t[0] != model]
     start = 1 if (_breaker.is_open() and len(tiers) > 1 and not model) else 0
@@ -121,11 +125,13 @@ def complete_json(
 
 
 def complete_json_ex(
-    system: str, user: str, model: str | None = None, max_tokens: int = 300, strict_model: bool = False
+    system: str, user: str, model: str | None = None, max_tokens: int = 300, strict_model: bool = False,
+    base_url: str | None = None, api_key: str | None = None,
 ) -> tuple[dict, str]:
     """complete_json plus the model that answered."""
     raw, used = complete_ex(system + "\nRespond ONLY with a JSON object.", user, temperature=0.0,
-                            max_tokens=max_tokens, model=model, strict_model=strict_model)
+                            max_tokens=max_tokens, model=model, strict_model=strict_model,
+                            base_url=base_url, api_key=api_key)
     return _parse_json(raw.strip()), used
 
 

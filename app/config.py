@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     llm_fallback_model: str = "openai/gpt-oss-20b"
     llm_fallback_api_key: str = ""
     llm_fallback_base_url: str = ""
+    # Optional Google Gemini (free tier) via its OpenAI-compatible endpoint: third failover
+    # tier for the agent and the eval judge (separate quota + different vendor).
+    gemini_api_key: str = ""
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_judge_model: str = "gemini-3.5-flash-lite"
     # Circuit breaker
     breaker_threshold: int = 5
     breaker_cooldown_s: int = 60

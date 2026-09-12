@@ -141,7 +141,13 @@ def groq_judge(system: str, user: str) -> dict:
     from app.agent.llm import complete_json_ex
     from app.config import settings
 
-    out, used = complete_json_ex(system, user, model=settings.eval_judge_model, max_tokens=900, strict_model=True)
+    if settings.gemini_api_key:
+        # A different vendor and a separate quota from the agent.
+        out, used = complete_json_ex(system, user, model=settings.gemini_judge_model, max_tokens=900,
+                                     strict_model=True, base_url=settings.gemini_base_url,
+                                     api_key=settings.gemini_api_key)
+    else:
+        out, used = complete_json_ex(system, user, model=settings.eval_judge_model, max_tokens=900, strict_model=True)
     last_judge_model = used
     return out
 

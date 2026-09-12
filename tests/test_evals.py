@@ -206,3 +206,21 @@ def test_report_records_the_judge_model_actually_used(monkeypatch):
     monkeypatch.setattr(J, "last_judge_model", "judge-x", raising=False)
     rep = R.evaluate(CASES, _good, judge_ok, TH, pace=0)
     assert rep.cases[0]["judge_model_used"] == "judge-x"
+
+
+def test_judge_runs_on_gemini_when_a_key_is_present(monkeypatch):
+    from app.agent import llm
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "gemini_api_key", "g")
+    seen = {}
+
+    def fake_complete_json_ex(system, user, **kw):
+        seen.update(kw)
+        return {"claims": [], "relevance": 1.0, "context_relevant": []}, kw["model"]
+
+    monkeypatch.setattr(llm, "complete_json_ex", fake_complete_json_ex)
+    J.groq_judge("s", "u")
+    assert seen["model"] == settings.gemini_judge_model
+    assert seen["base_url"] == settings.gemini_base_url and seen["api_key"] == "g"
+    assert seen["strict_model"] is True
