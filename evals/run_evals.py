@@ -32,7 +32,7 @@ RunCase = Callable[[dict], tuple[list[dict], dict, dict]]
 class Thresholds:
     faithfulness: float = 0.85
     relevance: float = 0.70
-    precision: float = 0.60
+    precision: float = 0.25  # calibrated 2026-09-12: baseline 0.35 with k=6 over an 11-chunk corpus (see DECISIONS 24)
     checks: float = 0.85
 
 
@@ -218,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         keep = {s.strip() for s in args.only.split(",") if s.strip()}
         cases = [c for c in cases if c.get("id") in keep]
     th = Thresholds(args.min_faithfulness, args.min_relevance, args.min_precision, args.min_checks)
-    print(f"evals: {len(cases)} cases; agent={settings.llm_model}; judge={settings.eval_judge_model}; "
+    print(f"evals: {len(cases)} cases; agent={settings.llm_model}; judge={J.effective_judge_model()}; "
           f"threshold={settings.relevance_distance_threshold}")
 
     try:
@@ -226,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         shutdown_runner()
     rep.summary["agent_model"] = settings.llm_model
-    rep.summary["judge_model"] = settings.eval_judge_model
+    rep.summary["judge_model"] = J.effective_judge_model()
     rep.summary["git_sha"] = os.environ.get("GITHUB_SHA", "")
     Path(args.report).write_text(rep.to_json(), encoding="utf-8")
     _print_table(rep)

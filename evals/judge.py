@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -138,18 +139,38 @@ def groq_judge(system: str, user: str) -> dict:
     """The real judge: the configured judge model, strictly (no silent fallback to the agent
     model); a failure scores the case zero rather than being judged by the wrong model."""
     global last_judge_model
-    from app.agent.llm import complete_json_ex
+    from app.agent import llm
     from app.config import settings
 
     if settings.gemini_api_key:
         # A different vendor and a separate quota from the agent.
-        out, used = complete_json_ex(system, user, model=settings.gemini_judge_model, max_tokens=900,
-                                     strict_model=True, base_url=settings.gemini_base_url,
-                                     api_key=settings.gemini_api_key)
+        kw: dict = dict(model=settings.gemini_judge_model, base_url=settings.gemini_base_url,
+                        api_key=settings.gemini_api_key)
     else:
-        out, used = complete_json_ex(system, user, model=settings.eval_judge_model, max_tokens=900, strict_model=True)
+        kw = dict(model=settings.eval_judge_model)
+    try:
+        out, used = llm.complete_json_ex(system, user, max_tokens=900, strict_model=True, **kw)
+    except Exception as e:  # noqa: BLE001
+        if not _is_rate_limit(e):
+            raise
+        time.sleep(RATE_LIMIT_PAUSE_S)  # free tiers cap requests per minute; wait the window out once
+        out, used = llm.complete_json_ex(system, user, max_tokens=900, strict_model=True, **kw)
     last_judge_model = used
     return out
+
+
+RATE_LIMIT_PAUSE_S = 35.0
+
+
+def _is_rate_limit(e: BaseException) -> bool:
+    s = f"{type(e).__name__} {e}".lower()
+    return "429" in s or "rate limit" in s or "ratelimit" in s or "resource_exhausted" in s or "quota" in s
+
+
+def effective_judge_model() -> str:
+    from app.config import settings
+
+    return settings.gemini_judge_model if settings.gemini_api_key else settings.eval_judge_model
 
 
 def dumps(scores: CaseScores) -> str:

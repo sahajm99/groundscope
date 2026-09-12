@@ -224,3 +224,21 @@ def test_judge_runs_on_gemini_when_a_key_is_present(monkeypatch):
     assert seen["model"] == settings.gemini_judge_model
     assert seen["base_url"] == settings.gemini_base_url and seen["api_key"] == "g"
     assert seen["strict_model"] is True
+
+
+def test_judge_retries_once_after_a_rate_limit(monkeypatch):
+    from app.agent import llm
+
+    calls = {"n": 0}
+
+    def flaky(system, user, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("429 RESOURCE_EXHAUSTED retry in 31s")
+        return {"claims": [], "relevance": 1.0, "context_relevant": []}, kw["model"]
+
+    slept = []
+    monkeypatch.setattr(J.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(llm, "complete_json_ex", flaky)
+    out = J.groq_judge("s", "u")
+    assert out["relevance"] == 1.0 and calls["n"] == 2 and slept and slept[0] >= 30
