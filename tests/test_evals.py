@@ -129,3 +129,24 @@ def test_evaluate_survives_an_agent_crash_and_fails():
 
     rep = R.evaluate(CASES, crash, judge_ok, TH, pace=0)
     assert not rep.passed and "RuntimeError" in rep.cases[0]["error"]
+
+
+def test_agent_runner_reuses_one_event_loop(monkeypatch):
+    """Every case must run on the same loop: the keep-alive MCP session lives on it, and a
+    fresh asyncio.run per case would kill the child and break the next case."""
+    import asyncio
+
+    from app.agent import graph
+
+    loops = []
+
+    async def fake_full(session_id, question):
+        loops.append(id(asyncio.get_running_loop()))
+        return [], {"answer": "x", "citations": []}, {}
+
+    monkeypatch.setattr(graph, "run_agent_graph_full", fake_full)
+    run_case = R.agent_runner()
+    run_case({"question": "a"})
+    run_case({"question": "b"})
+    assert len(set(loops)) == 1
+    R.shutdown_runner()

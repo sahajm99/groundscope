@@ -117,13 +117,38 @@ def evaluate(cases: list[dict], run_case: RunCase, judge: J.Judge, th: Threshold
 
 
 # -- the real agent ------------------------------------------------------------------------
+_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_loop() -> asyncio.AbstractEventLoop:
+    """ONE loop for the whole run: the keep-alive MCP session lives on it. A fresh
+    asyncio.run per case would kill the retrieval child between cases."""
+    global _loop
+    if _loop is None or _loop.is_closed():
+        _loop = asyncio.new_event_loop()
+    return _loop
+
+
 def agent_runner(session_id: str = "evals") -> RunCase:
-    from app.agent.graph import run_agent_graph_full
+    from app.agent import graph
 
     def run_case(case: dict) -> tuple[list[dict], dict, dict]:
-        return asyncio.run(run_agent_graph_full(session_id, str(case["question"])))
+        return _get_loop().run_until_complete(graph.run_agent_graph_full(session_id, str(case["question"])))
 
     return run_case
+
+
+def shutdown_runner() -> None:
+    global _loop
+    if _loop is not None and not _loop.is_closed():
+        try:
+            from app.agent.toolbus import close_bus
+
+            _loop.run_until_complete(close_bus())
+        except Exception:  # noqa: BLE001
+            pass
+        _loop.close()
+    _loop = None
 
 
 def _print_table(rep: Report) -> None:
@@ -169,12 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         rep = evaluate(cases, agent_runner(), J.groq_judge, th, pace=args.pace)
     finally:
-        try:
-            from app.agent.toolbus import close_bus
-
-            asyncio.run(close_bus())
-        except Exception:  # noqa: BLE001
-            pass
+        shutdown_runner()
     rep.summary["agent_model"] = settings.llm_model
     rep.summary["judge_model"] = settings.eval_judge_model
     rep.summary["git_sha"] = os.environ.get("GITHUB_SHA", "")
