@@ -331,3 +331,10 @@ async def test_web_source_is_kept_when_the_answer_cites_its_url(monkeypatch):
                    "web_search": lambda **kw: {"summary": "", "configured": True, "sources": [WEB, other]}})
     _, answer = await run("q", bus, monkeypatch)
     assert [c["detail"] for c in answer["citations"]] == ["https://u"]
+
+
+def test_react_chat_model_asks_gpt_oss_for_low_reasoning_effort():
+    """Same rule as the router: the tool worker's client must not let gpt-oss spend its
+    completion budget on hidden reasoning."""
+    assert graph._chat_model(None, "openai/gpt-oss-120b").extra_body == {"reasoning_effort": "low"}
+    assert not graph._chat_model(None, "qwen/qwen3.8-27b").extra_body

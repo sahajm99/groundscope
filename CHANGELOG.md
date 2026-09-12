@@ -20,6 +20,10 @@ roadmap milestones in `docs/v2-roadmap.md`.
 - **Rate limits.** A per-minute 429 (Groq's 8K tokens/minute) is waited out on the same tier
   instead of failing over; a daily cap fails over at once. The eval judge falls back to the
   Groq judge model when Gemini is rate-limited, recorded per case. Every tier failure is logged.
+- **No blank answers from a reasoning model.** gpt-oss is asked for low reasoning effort (it
+  spent a 700-token synthesis budget on hidden reasoning and returned empty content on the live
+  site); an empty completion cut by length is retried once with double the room and otherwise
+  counts as a failed tier, so the router fails over instead of returning nothing.
 
 ## [2.0.0] - 2026-09-12
 

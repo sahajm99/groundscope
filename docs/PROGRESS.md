@@ -137,3 +137,8 @@ Resumed sessions: read this, then `docs/DECISIONS.md` and `docs/BLOCKED.md`, the
 - Cerebras: account is PayGo (402 on every model); not usable on the free tier.
 - Push held until the daily quotas return; a scheduled job pushes and re-runs the badge
   workflow after Gemini's 07:00 UTC reset.
+- Blank-answer bug found live (Gita question: six chunks retrieved, empty answer, six
+  citations): gpt-oss spent the 700-token synthesis budget on hidden reasoning. Fixed with
+  `reasoning_effort: low` for gpt-oss on both clients (Groq accepts it: probe answered with
+  24 completion tokens) and a retry-with-double-room-then-fail-over rule for empty
+  completions. 110 tests.

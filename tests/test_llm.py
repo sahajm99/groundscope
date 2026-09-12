@@ -219,3 +219,54 @@ def test_each_tier_failure_is_logged_with_the_provider_message(monkeypatch, capl
     with caplog.at_level(logging.WARNING, logger="app.agent.llm"):
         llm.complete_ex("s", "u")
     assert any(llm.settings.llm_model in r.message and "TPD" in r.message for r in caplog.records)
+
+
+# -- Reasoning models and empty completions (live site, 2026-09-12 evening) ----------------
+# gpt-oss spends its completion budget on hidden reasoning first: a Gita question retrieved
+# six verse chunks and the 700-token synthesis came back with empty content (finish_reason
+# 'length'), which the UI showed as a blank answer with six citations.
+
+
+def test_gpt_oss_calls_ask_for_low_reasoning_effort(monkeypatch):
+    seen: list[dict] = []
+
+    class Rec(FakeClient):
+        def _create(self, **kw):
+            seen.append(kw)
+            return super()._create(**kw)
+
+    monkeypatch.setattr(llm, "_client", lambda base, key: Rec([]))
+    monkeypatch.setattr(llm.settings, "llm_api_key", "k")
+    llm.complete_ex("s", "u", model="openai/gpt-oss-120b", strict_model=True)
+    assert seen[0]["extra_body"] == {"reasoning_effort": "low"}
+    llm.complete_ex("s", "u", model="qwen/qwen3.8-27b", strict_model=True)
+    assert "extra_body" not in seen[1]
+
+
+def _cut():
+    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=""), finish_reason="length")])
+
+
+def test_empty_completion_cut_by_length_is_retried_with_more_room(monkeypatch):
+    calls: list[int] = []
+
+    class Cut(FakeClient):
+        def _create(self, **kw):
+            calls.append(kw["max_tokens"])
+            return _cut() if len(calls) == 1 else super()._create(**kw)
+
+    monkeypatch.setattr(llm, "_client", lambda base, key: Cut([]))
+    monkeypatch.setattr(llm.settings, "llm_api_key", "k")
+    text, used = llm.complete_ex("s", "u", max_tokens=700)
+    assert text == '{"ok": true}' and calls == [700, 1400] and used == llm.settings.llm_model
+
+
+def test_empty_completion_twice_fails_over_instead_of_returning_nothing(monkeypatch):
+    class Cut(FakeClient):
+        def _create(self, **kw):
+            return _cut() if kw["model"] == llm.settings.llm_model else super()._create(**kw)
+
+    monkeypatch.setattr(llm, "_client", lambda base, key: Cut([]))
+    monkeypatch.setattr(llm.settings, "llm_api_key", "k")
+    text, used = llm.complete_ex("s", "u")
+    assert text == '{"ok": true}' and used == llm.settings.llm_fallback_model

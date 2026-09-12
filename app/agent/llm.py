@@ -122,6 +122,17 @@ def same_tier_wait_s(e: BaseException) -> float | None:
     return w + 0.5
 
 
+MAX_TOKENS_CEILING = 4000
+
+
+def reasoning_kwargs(model: str) -> dict:
+    """gpt-oss is a reasoning model: with the default (medium) effort it spends the completion
+    budget on hidden reasoning first, and a 700-token synthesis over six verse chunks came
+    back with empty content on the live site. Low effort keeps the budget for the answer.
+    Sent as extra_body so the OpenAI-compatible endpoints of other vendors never see it."""
+    return {"extra_body": {"reasoning_effort": "low"}} if model.startswith("openai/gpt-oss") else {}
+
+
 def _client(base_url: str, api_key: str):
     if base_url not in _clients:
         from openai import OpenAI
@@ -174,6 +185,7 @@ def complete_ex(
         tier_model, base, key = tiers[i]
         is_last = i == len(tiers) - 1
         waits = 0
+        grows = 0
         while True:
             cap = _rpm_cap(base)
             if cap:
@@ -181,10 +193,25 @@ def complete_ex(
             try:
                 resp = _client(base, key).chat.completions.create(
                     model=tier_model, temperature=temperature, max_tokens=max_tokens, messages=messages,
+                    **reasoning_kwargs(tier_model),
                 )
+                choice = resp.choices[0]
+                text = (choice.message.content or "").strip()
+                if not text:
+                    # Reasoning ate the budget (finish_reason 'length') or the model went quiet:
+                    # once more with double the room, then treat it as a failed tier. An empty
+                    # answer must never reach the visitor as if it were an answer.
+                    reason = getattr(choice, "finish_reason", None)
+                    if grows < 1 and max_tokens < MAX_TOKENS_CEILING:
+                        grows += 1
+                        max_tokens = min(max_tokens * 2, MAX_TOKENS_CEILING)
+                        log.warning("llm tier %s returned empty content (finish_reason=%s); retrying with max_tokens=%s",
+                                    tier_model, reason, max_tokens)
+                        continue
+                    raise RuntimeError(f"empty completion (finish_reason={reason})")
                 if i == 0 and not model:
                     _breaker.record_success()
-                return (resp.choices[0].message.content or "").strip(), tier_model
+                return text, tier_model
             except Exception as e:  # noqa: BLE001
                 last_err = e
                 log.warning("llm tier %s failed: %s: %s", tier_model, type(e).__name__, str(e)[:300])

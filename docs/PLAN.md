@@ -16,9 +16,9 @@ Updated 2026-09-12. This is the working plan; `docs/PROGRESS.md` records what is
 | Live grounded question | yes | resume question answered from the PDF |
 | Live web-fallback question | yes | 2025 Nobel Prize in Physics answered from four web results, cited |
 | Green badge on main | pending | runs 34707065998 / 34707733909 red (flake fixed; quota) |
-| Rate-limit fix, model in trace, cited-only sources, demo corpus, v2.0.1 | committed locally, not pushed | 106 tests, ruff and pyright clean; scheduled push after the 07:00 UTC quota reset |
+| Rate-limit fix, model in trace, cited-only sources, demo corpus, blank-answer fix, v2.0.1 | committed locally, not pushed | 110 tests, ruff and pyright clean; scheduled push after the 07:00 UTC quota reset |
 | /canary, /document-release | pending | after badge |
-| Portfolio `projects.ts` pushed | pending (drafted, typechecks) | |
+| Portfolio `projects.ts` pushed | yes | sahajm99/portfolio f0eeb37; sahaj-mekala.vercel.app/projects/groundscope shows the v2 entry |
 | Seed a public document into prod | yes | Bhagavad-Gita (Arnold, public domain): 18 chapters as pages, 64 chunks, GLOBAL |
 | Cerebras capacity | not possible (PayGo, 402) | docs/BLOCKED.md |
 

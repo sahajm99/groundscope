@@ -28,7 +28,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send, StreamWriter
 
 from app.agent import tools
-from app.agent.llm import complete_ex, complete_json, same_tier_wait_s
+from app.agent.llm import complete_ex, complete_json, reasoning_kwargs, same_tier_wait_s
 from app.agent.loop import _SYNTH_SYS, is_metadata
 from app.agent.toolbus import CONTEXT_TOOLS, ToolError, ToolUnavailable, get_bus
 from app.agent.trace import TraceEvent
@@ -138,7 +138,7 @@ def _chat_model(tools: list | None, model: str):
     from pydantic import SecretStr
 
     llm = ChatOpenAI(model=model, base_url=settings.llm_base_url, api_key=SecretStr(settings.llm_api_key),
-                     temperature=0, timeout=LLM_TIMEOUT_S, max_retries=1)
+                     temperature=0, timeout=LLM_TIMEOUT_S, max_retries=1, **reasoning_kwargs(model))
     return llm.bind_tools(tools) if tools else llm
 
 
