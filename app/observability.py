@@ -38,7 +38,7 @@ _client = None
 def _get_client():
     global _client
     if _client is None:
-        from langfuse import Langfuse
+        from langfuse import Langfuse  # type: ignore[import-not-found]  # dormant; not pinned
 
         _client = Langfuse(
             public_key=settings.langfuse_public_key,
