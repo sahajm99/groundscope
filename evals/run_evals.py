@@ -2,7 +2,7 @@
 
     python -m evals.run_evals [--golden evals/golden.jsonl] [--report eval-report.json]
                               [--min-faithfulness 0.85] [--min-relevance 0.7]
-                              [--min-precision 0.6] [--min-checks 0.85] [--pace 3] [--only g01,g02]
+                              [--min-precision 0.25] [--min-checks 0.85] [--pace 3] [--only g01,g02]
 
 Exit codes: 0 pass, 1 a threshold was missed (the CI gate), 2 not runnable (no LLM key).
 Each case runs through the real LangGraph agent (MCP servers, DB, web) and is scored by
