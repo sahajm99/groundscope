@@ -49,7 +49,8 @@ def _client(base_url: str, api_key: str):
     if base_url not in _clients:
         from openai import OpenAI
 
-        c = OpenAI(api_key=api_key, base_url=base_url)
+        # A stalled provider must not hold a worker thread for the client's default 600 s.
+        c = OpenAI(api_key=api_key, base_url=base_url, timeout=60.0, max_retries=1)
         if os.getenv("LANGSMITH_TRACING", "").lower() == "true" and os.getenv("LANGSMITH_API_KEY"):
             try:
                 from langsmith.wrappers import wrap_openai

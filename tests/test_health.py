@@ -21,6 +21,7 @@ def test_health_lists_mcp_servers_and_tools(monkeypatch):
 
     monkeypatch.setattr(toolbus, "get_bus", fake_get_bus)
     monkeypatch.setattr("app.main.get_bus", fake_get_bus, raising=False)
+    monkeypatch.setattr(toolbus, "_bus", fake)  # /health reads the cached bus, never loads
     from app.main import app
 
     with TestClient(app) as client:

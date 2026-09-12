@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     max_upload_mb: int = 10
     max_pages: int = 120
     rate_limit_per_min: int = 12
+    max_concurrent_questions: int = 4  # global in-flight cap for /ask (512 MB host, 3-way fan-out)
     global_daily_cap: int = 500
 
     # Agent

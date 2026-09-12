@@ -71,7 +71,7 @@ async def run_agent(session_id: str, question: str) -> AsyncIterator[dict]:
     # ── Node: metadata branch ─────────────────────────────────────
     if route == "metadata":
         t0 = time.monotonic()
-        yield trace(type="tool_call", tool="metadata_query", input=session_id, summary="Listing documents.")
+        yield trace(type="tool_call", tool="metadata_query", input="(this session)", summary="Listing documents.")
         summary, _ = await asyncio.to_thread(tools.metadata_query, session_id)
         yield trace(type="tool_result", tool="metadata_query", summary=summary, ms=_ms(t0))
         answer = summary

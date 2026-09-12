@@ -28,7 +28,7 @@ from langgraph.types import Send, StreamWriter
 from app.agent import tools
 from app.agent.llm import complete, complete_json
 from app.agent.loop import _SYNTH_SYS, is_metadata
-from app.agent.toolbus import ToolError, ToolUnavailable, get_bus
+from app.agent.toolbus import CONTEXT_TOOLS, ToolError, ToolUnavailable, get_bus
 from app.agent.trace import TraceEvent
 from app.config import settings
 from app.ingestion.embedder import get_embedder
@@ -39,6 +39,8 @@ REFUSAL_PREFIX = "I can't ground an answer to that"
 KNOWLEDGE_PATH_TOOLS = frozenset({"web_search"})  # invoked by the graph, never offered as an "action"
 SOURCE_CHARS = 2600  # a 400-word chunk is ~2,500 chars; never cut a chunk in half
 MAX_SOURCES = 6  # ~4K tokens of sources: fits the free-tier per-minute cap; branches merged round-robin
+MAX_TOOL_CALLS_PER_ROUND = 4  # one model reply cannot fan out 50 tool calls
+LLM_TIMEOUT_S = 60.0  # a stalled provider must not hold a thread for the client's default 10 minutes
 
 __all__ = ["run_agent_graph", "run_agent_graph_full", "get_bus", "ToolError", "ToolUnavailable"]
 
@@ -85,9 +87,16 @@ def _src(d: dict) -> tools.Source:
 
 
 async def _call(name: str, **args: Any) -> dict:
-    """Bus call with the per-call timeout. Raises ToolUnavailable/ToolError/TimeoutError."""
+    """Bus call with the per-call timeout. Raises ToolUnavailable/ToolError/TimeoutError.
+    A timeout on a context tool (the keep-alive retrieval child) marks the bus broken so the
+    next request rebuilds it instead of every visitor waiting out the timeout forever."""
     bus = await get_bus()
-    return await asyncio.wait_for(bus.call(name, **args), settings.tool_timeout_s)
+    try:
+        return await asyncio.wait_for(bus.call(name, **args), settings.tool_timeout_s)
+    except TimeoutError:
+        if name in CONTEXT_TOOLS:
+            bus.broken = True
+        raise
 
 
 def _citations(collected: list) -> list[dict]:
@@ -107,7 +116,8 @@ def _chat_model(tools: list | None, model: str):
     from langchain_openai import ChatOpenAI
     from pydantic import SecretStr
 
-    llm = ChatOpenAI(model=model, base_url=settings.llm_base_url, api_key=SecretStr(settings.llm_api_key), temperature=0)
+    llm = ChatOpenAI(model=model, base_url=settings.llm_base_url, api_key=SecretStr(settings.llm_api_key),
+                     temperature=0, timeout=LLM_TIMEOUT_S, max_retries=1)
     return llm.bind_tools(tools) if tools else llm
 
 
@@ -220,6 +230,9 @@ async def tool_worker_node(state: S, writer: StreamWriter) -> dict:
         msgs.append(ai)
         if not ai.tool_calls:
             break
+        if len(ai.tool_calls) > MAX_TOOL_CALLS_PER_ROUND:
+            # Bound one reply's fan of tool calls; the message must only list calls we answer.
+            ai.tool_calls = ai.tool_calls[:MAX_TOOL_CALLS_PER_ROUND]
         for tc in ai.tool_calls:
             _emit(writer, state, type="tool_call", tool=tc["name"], input=str(tc["args"])[:200], summary=f"Calling {tc['name']}.")
             tool = tool_map.get(tc["name"])
@@ -249,7 +262,7 @@ async def tool_worker_node(state: S, writer: StreamWriter) -> dict:
 
 # -- Node: metadata --------------------------------------------------------------
 async def metadata_node(state: S, writer: StreamWriter) -> dict:
-    _emit(writer, state, type="tool_call", tool="metadata_query", input=state["session_id"], summary="Listing documents via MCP.")
+    _emit(writer, state, type="tool_call", tool="metadata_query", input="(this session)", summary="Listing documents via MCP.")
     try:
         res = await _call("metadata_query", session_id=state["session_id"])
         summary = str(res.get("summary", ""))

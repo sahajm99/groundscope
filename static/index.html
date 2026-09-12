@@ -163,29 +163,33 @@ loadDocs();
 
 async function ask(q){
   q=(q||'').trim(); if(!q) return; send.disabled=true;
-  document.getElementById('q').value='';
-  add('user', q); trace.innerHTML=''; lanes.clear();
-  const res = await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
-  if(!res.ok || !res.body){ add('agent', await res.text()); send.disabled=false; return; }
-  const reader=res.body.getReader(), dec=new TextDecoder(); let buf='';
-  while(true){ const {done,value}=await reader.read(); if(done) break;
-    buf=(buf+dec.decode(value,{stream:true})).replace(/\r/g,''); const blocks=buf.split('\n\n'); buf=blocks.pop();
-    for(const b of blocks){
-      let ev='message', data=''; for(const line of b.split('\n')){
-        if(line.startsWith('event:')) ev=line.slice(6).trim();
-        else if(line.startsWith('data:')) data+=line.slice(5).trim();
+  try{
+
+    document.getElementById('q').value='';
+    add('user', q); trace.innerHTML=''; lanes.clear();
+    const res = await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
+    if(!res.ok || !res.body){ add('agent', await res.text()); send.disabled=false; return; }
+    const reader=res.body.getReader(), dec=new TextDecoder(); let buf='';
+    while(true){ const {done,value}=await reader.read(); if(done) break;
+      buf=(buf+dec.decode(value,{stream:true})).replace(/\r/g,''); const blocks=buf.split('\n\n'); buf=blocks.pop();
+      for(const b of blocks){
+        let ev='message', data=''; for(const line of b.split('\n')){
+          if(line.startsWith('event:')) ev=line.slice(6).trim();
+          else if(line.startsWith('data:')) data+=line.slice(5).trim();
+        }
+        if(!data) continue; const p=JSON.parse(data);
+        if(ev==='trace') step(p);
+        else if(ev==='answer'){ const d=add('agent', p.answer);
+          if(p.citations&&p.citations.length){ const c=el('div','cite'); c.appendChild(txt('sources: '));
+            p.citations.forEach((x,i)=>{ if(i) c.appendChild(txt(' · '));
+              if(x.kind==='web' && safeHref(x.detail)) c.appendChild(linkEl((x.label||'')+' ↗', x.detail));
+              else c.appendChild(txt(x.label||'')); });
+            d.appendChild(c); } }
       }
-      if(!data) continue; const p=JSON.parse(data);
-      if(ev==='trace') step(p);
-      else if(ev==='answer'){ const d=add('agent', p.answer);
-        if(p.citations&&p.citations.length){ const c=el('div','cite'); c.appendChild(txt('sources: '));
-          p.citations.forEach((x,i)=>{ if(i) c.appendChild(txt(' · '));
-            if(x.kind==='web' && safeHref(x.detail)) c.appendChild(linkEl((x.label||'')+' ↗', x.detail));
-            else c.appendChild(txt(x.label||'')); });
-          d.appendChild(c); } }
     }
-  }
-  send.disabled=false;
+    send.disabled=false;
+  }catch(e){ add('agent', 'Something went wrong talking to the agent. Try again.'); }
+  finally{ send.disabled=false; }
 }
 
 async function upload(){

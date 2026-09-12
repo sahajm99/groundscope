@@ -60,6 +60,7 @@ def _contexts(final_state: dict) -> list[str]:
 
 
 RATE_LIMIT_PAUSE_S = 30.0
+HARD_CHECKS = frozenset({"expect_grounded", "expect_web", "agent_error"})
 
 
 def _is_rate_limit(e: BaseException) -> bool:
@@ -116,8 +117,12 @@ def evaluate(cases: list[dict], run_case: RunCase, judge: J.Judge, th: Threshold
         return round(statistics.fmean(vals), 4) if vals else None
 
     checks_pass = round(sum(1 for r in rows if not r.get("failed_checks")) / len(rows), 4) if rows else 0.0
+    # A grounded case answered from the web (or a web case with no web source) is a hard
+    # failure regardless of the averages: that is exactly the regression the gate exists for.
+    hard_failures = sum(1 for r in rows if any(f in HARD_CHECKS for f in (r.get("failed_checks") or [])))
     summary: dict[str, Any] = {
         "cases": len(rows),
+        "hard_check_failures": hard_failures,
         "faithfulness": mean("faithfulness"),
         "answer_relevance": mean("answer_relevance"),
         "context_precision": mean("context_precision"),
@@ -131,6 +136,8 @@ def evaluate(cases: list[dict], run_case: RunCase, judge: J.Judge, th: Threshold
         val = summary[key]
         if val is None or val < minimum:
             failed_th.append(key)
+    if hard_failures:
+        failed_th.append("hard_checks")
     if not rows:
         failed_th.append("no_cases")
     summary["failed_thresholds"] = failed_th

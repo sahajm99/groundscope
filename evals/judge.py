@@ -118,7 +118,9 @@ def deterministic_checks(case: dict, answer: str, citations: list[dict]) -> list
     failed: list[str] = []
     low = normalize(answer)
     for s in case.get("must_contain", []) or []:
-        if normalize(str(s)) not in low:
+        # Word-boundary match: "11" must not be satisfied by "2011" or a page number.
+        pattern = r"(?<![a-z0-9])" + re.escape(normalize(str(s))) + r"(?![a-z0-9])"
+        if not re.search(pattern, low):
             failed.append(f"must_contain:{s}")
     kinds = {c.get("kind") for c in citations}
     if case.get("expect_grounded"):

@@ -126,23 +126,65 @@ class ToolBus:
 
 _bus: ToolBus | None = None
 _servers: ServerSet | None = None
+_lock: asyncio.Lock | None = None
+_lock_loop: asyncio.AbstractEventLoop | None = None
+_retired: list = []  # old ServerSets still draining in-flight calls; closed on shutdown
+RETIRE_AFTER_S = 120.0
+
+
+def _rebuild_lock() -> asyncio.Lock:
+    """One lock per event loop (an asyncio.Lock cannot be shared across loops)."""
+    global _lock, _lock_loop
+    loop = asyncio.get_running_loop()
+    if _lock is None or _lock_loop is not loop:
+        _lock, _lock_loop = asyncio.Lock(), loop
+    return _lock
+
+
+def peek_bus() -> ToolBus | None:
+    """The cached bus without loading anything (for /health)."""
+    return _bus
+
+
+async def _retire(servers) -> None:
+    """Close an old ServerSet later, so calls in flight on it finish instead of getting
+    ClosedResourceError the moment one visitor's transport error triggers a rebuild."""
+    _retired.append(servers)
+    try:
+        await asyncio.sleep(RETIRE_AFTER_S)
+        await servers.close()
+    finally:
+        if servers in _retired:
+            _retired.remove(servers)
 
 
 async def get_bus() -> ToolBus:
-    """Process-wide bus, built on first use; rebuilt once if a keepalive transport broke."""
+    """Process-wide bus, built on first use; rebuilt (once, under a lock) if a keepalive
+    transport broke. Concurrent callers share one load instead of each spawning children."""
     global _bus, _servers
-    if _bus is None or _bus.broken:
+    if _bus is not None and not _bus.broken:
+        return _bus
+    async with _rebuild_lock():
+        if _bus is not None and not _bus.broken:
+            return _bus
         from app.agent.mcp_registry import load_servers
 
-        if _servers is not None:
-            await _servers.close()
+        old = _servers
         _servers = await load_servers()
         _bus = ToolBus(_servers.tools)
+        if old is not None:
+            asyncio.get_running_loop().create_task(_retire(old))
     return _bus
 
 
 async def close_bus() -> None:
     global _bus, _servers
+    for s in list(_retired):
+        try:
+            await s.close()
+        except Exception:  # noqa: BLE001
+            pass
+    _retired.clear()
     if _servers is not None:
         await _servers.close()
     _bus, _servers = None, None
