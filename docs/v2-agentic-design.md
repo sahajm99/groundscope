@@ -1,142 +1,200 @@
-# Groundscope v2 — Production-Grade Agentic System (Free Tier)
+# Groundscope v2 — Agent Harness Design
 
-**Date:** 2026-06-07
-**Goal:** evolve v1 (a single-agent router loop) into an **Etech7-grade multi-agent system** — supervisor/planner-workers, evaluator, human-in-the-loop, durable checkpointing, model routing, memory, guardrails, eval, multi-tenancy — running on **$0** (free tiers + OSS).
-
-Informed by web-current research (2026) on agentic patterns, framework pro/cons, and free-tier services.
+**Date:** 2026-06-08
+**Status:** master design doc (the spec the HLD/LLD/roadmap derive from)
+**Supersedes:** the v1 "observable agentic RAG" framing.
 
 ---
 
-## 1. Where v1 sits vs. the Etech7 platform
+## 1. Thesis — what Groundscope actually is
 
-v1 is a **single-agent, single-loop** agentic-RAG with a corrective doc→web gate (already a real pattern: **CRAG-lite + RAG-as-tool**). The Etech7 platform is a **supervisor multi-agent StateGraph** with the full production hardening stack. v2 closes that gap — every Etech7 pattern has a free equivalent.
+Groundscope v2 is an **agent harness**: the machinery that wraps a raw LLM and turns
+it into a reliable, observable, operable agent — orchestration, a uniform tool layer,
+control & safety, observability, quality gates, and operations.
 
-| Etech7 pattern | v1 today | v2 (free) |
+**Grounded question-answering is the *demonstration workload*, not the product.** RAG
+is the task we run *through* the harness to exercise every layer. This is a deliberate
+stance: answer quality is bounded on purpose so the harness — not the answer — is what
+a reviewer judges. A better answer engine is not the goal; a credible, runnable piece
+of **agent infrastructure** is.
+
+Positioning (public, task-first):
+
+> *Groundscope is a $0, open, runnable agent harness — the orchestration, tools,
+> observability, evals, and ops that turn an LLM into a reliable agent. The grounded
+> Q&A demo is just the workload that exercises it.*
+
+---
+
+## 2. The brain and the hands (as built, grounded in code)
+
+### 🧠 Brain — two models, two jobs
+| Role | Model | Source |
 |---|---|---|
-| Supervisor / planner-worker | single loop | **LangGraph supervisor graph** (planner → workers → synthesizer) |
-| Parallel fan-out (Send API) | sequential | LangGraph **Send API** parallel retrieval/web workers |
-| Evaluator / critic | none | **CRAG grader** + **answer critic** (Self-RAG verify) node |
-| Human-in-the-loop gate | none | LangGraph `interrupt()` gate before sensitive actions |
-| Durable checkpointing | in-memory (lost on restart) | **LangGraph Postgres checkpointer** (Neon/Supabase) |
-| Model routing / failover | single model | Groq → Gemini **fallback router** (LiteLLM or try/except) |
-| Tool-use via MCP | direct fns | expose tools as an **MCP server** (FastMCP) + consume MCP |
-| Hybrid RAG (BM25+vector) | vector only | **pgvector + Postgres full-text (tsvector) BM25** fusion |
-| Reranking | none | **BGE-reranker-v2-m3** (local, free) |
-| Circuit breaker | rate limit only | LLM **circuit breaker** (trip at ~5 fails / 60s cooldown) |
-| Backpressure / queue | none | **Upstash QStash** or self-host Redis for ingest queue |
-| Per-tenant concurrency caps | global only | per-tenant caps + **Postgres RLS** multi-tenancy |
-| Structured-output tool agent | freeform synth | schema-constrained JSON outputs (Pydantic) |
-| Observability / tracing | LangSmith (flat) | LangSmith **nested graph traces** (auto via LangGraph) |
-| Eval | none | **Ragas/DeepEval** golden-set CI, judged by free LLM |
-| Memory | none | **Mem0 / LangGraph store** (episodic + semantic) |
+| Reasoning | Groq `llama-3.3-70b-versatile` → `llama-3.1-8b-instant` → optional 3rd provider | `app/agent/llm.py` |
+| Retrieval (embeddings) | local `BAAI/bge-small-en-v1.5`, 384-dim (fastembed) | `app/config.py` |
 
----
+The reasoning brain is already wrapped in a **tiered router + circuit breaker**
+(5 consecutive primary fails → 60 s cooldown → skip to fallback). OpenAI-compatible
+client, so a provider swap is an env change. This is a real harness capability that
+exists in v1.
 
-## 2. Trending agentic patterns (2026) and which v2 adopts
+### ✋ Hands — today they are split (the core problem v2 fixes)
+v1 has **two tool systems that don't compose**:
 
-From the research, the patterns currently used in production agentic systems — v2 should demonstrably include the starred ones:
+- **Native in-process tools** (hardcoded into the graph): `hybrid_search`,
+  `metadata_query`, `web_search`.
+- **MCP tools** (plug-and-play via `mcp.json` → `mcp_servers/util_server.py`):
+  `calculator`, `current_datetime`.
 
-- **ReAct** (reason+act loop) — the substrate ✦
-- **Supervisor multi-agent (orchestrator-workers)** — the 2026 production default ✦
-- **Plan-and-execute** — planner emits a sub-task plan ✦
-- **Parallel fan-out / map-reduce** ✦
-- **Evaluator-optimizer / reflection** — separate critic loop ✦
-- **Agentic RAG + Corrective/Self-RAG** — grade retrieval, verify claims ✦ (v1 already has the seed)
-- **Router / handoff** — route by intent/difficulty ✦ (v1 has deterministic route)
-- **Tool use / function calling** ✦ + **MCP tool servers** ✦
-- **Agent memory** (short/long, episodic/semantic) ✦
-- **Human-in-the-loop gates** ✦
-- **Durable execution / checkpointing** ✦
-- **Guardrails / circuit-breakers** ✦
-- **Model routing / fallback** ✦
-- Swarm / peer agents — *deliberately skipped* (supervisor is easier to trace/audit; swarm only wins on latency)
+The planner picks **one path per query** (`graph.py` `_plan_branch`): knowledge (RAG)
+**or** tools (MCP ReAct loop). It cannot search a document *and* compute in the same
+answer. That split is the single biggest weakness the harness framing exposes.
 
----
-
-## 3. Target v2 architecture
+### Decision (locked) — unify on MCP
+**MCP becomes the single tool bus.** Native retrieval/web/metadata tools are migrated
+into Groundscope's own MCP servers, so the agent sees one tool registry, the planner
+can compose across all tools, and the UI can show one live "Connected Tools" panel.
 
 ```
-                          ┌──────────── Supervisor (LangGraph StateGraph) ────────────┐
-  question ─▶ guardrails ─▶│  planner ─▶ fan-out (Send API) ─┬─ doc_retrieval_worker   │
-             (input)       │                                 ├─ web_search_worker      │
-                           │                                 └─ metadata_worker        │
-                           │             aggregator ◀────────────────────────────────  │
-                           │   reranker ─▶ evaluator (CRAG grade + claim-verify)        │
-                           │       │  not-grounded → re-plan / web                      │
-                           │   synthesizer ─▶ HITL gate (if sensitive) ─▶ answer        │
-                           └─────────────────────────┬─────────────────────────────────┘
-       model router (Groq→Gemini failover) ·  Postgres checkpointer (durable) ·
-       memory (Mem0) ·  LangSmith nested traces ·  per-tenant RLS + concurrency caps
+agent ──binds──► ONE tool registry (MCP protocol)
+   ├─ groundscope-retrieval  → hybrid_search, metadata_query   ← also our PUBLIC MCP server
+   ├─ groundscope-web        → web_search (Tavily) [+ gemini_grounding]
+   └─ groundscope-utils      → calculator, datetime [+ fetch_url]
 ```
 
-Every node persists state to the Postgres checkpointer (thread_id = session/tenant), so any pause/crash/HITL resumes exactly where it left off — exactly the Etech7 MongoDB-checkpointer pattern, on free Postgres.
+Two things this design must respect (carried into the LLD):
+1. **Structured returns, not strings.** The corrective-RAG gate needs the vector
+   *distance score* back to decide doc-vs-web fallback, so `groundscope-retrieval`
+   returns structured JSON (`score` + `sources`), not a plain string.
+2. **Tenant scoping is never LLM-controlled.** `session_id` is injected by the
+   orchestration layer when it invokes retrieval/metadata tools — the LLM never
+   chooses which tenant's data to read. Utility tools (calc, datetime, fetch) are
+   "open" tools the LLM may call freely; retrieval/metadata are "context" tools the
+   graph invokes with a server-injected session token. This keeps isolation
+   deterministic *and* keeps a uniform bus.
+
+The double win: `groundscope-retrieval` is **both** the agent's internal retrieval
+tool **and** the public MCP server other agents can call. One server, two roles.
 
 ---
 
-## 4. Framework choice — stay on LangGraph
+## 3. The harness spine — six layers
 
-| Framework | OSS/free | Best for | Verdict for Groundscope v2 |
+The whole system reorganizes around six layers. Every layer answers the same four
+questions: *what it is · what v1 has · what v2 adds · how it's visibly provable.*
+
+| Layer | v1 (shipped) | v2 adds | Provable by |
 |---|---|---|---|
-| **LangGraph** | ✅ MIT (LangSmith/Platform paid) | stateful, durable, auditable production agents w/ HITL | **✅ CHOSEN** — mirrors Etech7, durable checkpointing + HITL native, LangSmith already wired |
-| CrewAI | ✅ OSS core | fast role-based prototypes | fastest ramp, but rigid for dynamic flow; weaker determinism/audit |
-| AutoGen / AG2 / MAF | ✅ OSS | emergent multi-agent debate, code-exec | confusing 3-way split (2026); non-deterministic; best in Azure |
-| OpenAI Agents SDK | ✅ MIT (OpenAI platform paid) | fast handoffs on OpenAI models | OpenAI lock-in; no long-term memory OOTB; conflicts with free-Groq goal |
-| LlamaIndex Workflows | ✅ MIT (LlamaCloud paid) | retrieval-first agents, best parsing | great RAG/parsing, weaker complex orchestration |
-| Pydantic AI | ✅ MIT | typed single-agent Python | type-safe + lovely DX; multi-agent needs manual wiring |
-| Google ADK | ✅ Apache-2.0 | multimodal, GCP ecosystem | strong eval/debugger, but GCP lock-in + 1-tool-per-agent limits |
-| Smolagents | ✅ Apache-2.0 | minimal code-agents, research | tiny/transparent, but build everything else yourself + sandbox risk |
-| Temporal (durable exec) | ⚠️ OSS self-host / Cloud paid | crash-proof orchestration backbone | not an agent framework; LangGraph checkpointing is enough for v2 |
-
-**Why LangGraph wins here:** the goal is "build an agent like Etech7," and Etech7 *is* LangGraph. It uniquely gives durable checkpointing + native HITL interrupts + LangSmith tracing — the exact production triad — for free in the OSS core. We already have a working LangGraph engine in the repo (`agent/graph.py`); v2 expands it.
+| **1 Orchestration** | planner → knowledge/tool path → synth (LangGraph) | **query fan-out** (decompose → parallel sub-queries → merge); plan-and-execute | trace panel showing parallel branches |
+| **2 Tool layer** | split native + MCP | **unify on MCP** bus; expose Groundscope *as* an MCP server; `fetch_url`, `gemini_grounding` | "Connected Tools" UI panel + tool-call spans |
+| **3 Control / safety** | circuit breaker, grounded-or-refuse gate | durable Postgres checkpointer + **HITL interrupt/resume**; input/output guardrails; token & loop budgets | a paused run you resume; a blocked unsafe query |
+| **4 Observability** | LangSmith nested traces, SSE step stream | **cost & token per query**; latency per node | live "watch it think" panel + cost line |
+| **5 Quality gate** | manual relevance calibration | **evals-in-CI** (golden set; faithfulness / answer-relevance / context-precision) | green CI badge + score trend |
+| **6 Operations** | Docker → Render, Vercel-linked portfolio | **GitHub Actions** (lint → type → test → eval → build); preview deploys; multi-tenancy (Postgres RLS) | the Actions tab; a PR preview URL |
 
 ---
 
-## 5. The free-tier stack (verified 2026)
+## 4. Layer detail
 
-| Component | Free option | Limit note |
+### Layer 1 — Orchestration
+A LangGraph `StateGraph` supervisor. v1 already routes planner → (knowledge | tool)
+→ synth. v2 adds **query fan-out**: the planner decomposes a complex question into
+independent sub-queries, runs them as **parallel workers** (LangGraph `Send` API),
+and an aggregator merges results before the gate. The corrective-RAG gate
+(doc → web → ground-or-refuse) stays as deterministic orchestration *on top of* the
+tool bus — it is a feature, not something to dissolve into a free ReAct loop. Fan-out
+is the headline orchestration flex and is visible as parallel branches in the trace.
+
+### Layer 2 — Tool layer
+Unify on MCP (§2). All capabilities become MCP tools across three Groundscope-owned
+servers plus any external MCP server dropped into `mcp.json`. The agent binds one
+registry; the deterministic gate and the ReAct path both draw from it. New tools:
+`fetch_url` (utility), `gemini_grounding` (Gemini "Grounding with Google Search" as a
+web tool). Groundscope's own retrieval server is published so other agents can call it.
+
+### Layer 3 — Control / safety
+- **Durable checkpointer** — LangGraph Postgres checkpointer (Supabase), `thread_id =
+  session/tenant`. Any pause/crash/HITL resumes exactly where it left off.
+- **HITL gate** — a LangGraph `interrupt()` before a sensitive tool action
+  (approve / edit / reject), resumed via the checkpointer.
+- **Guardrails** — input (prompt-injection / PII) and output checks; retrieved text is
+  treated as untrusted (already the v1 stance), now formalized.
+- **Budgets** — token and tool-round caps (v1 has `max_tool_rounds`), extended to a
+  per-request token budget surfaced in the trace.
+
+### Layer 4 — Observability
+LangSmith already gives one nested trace per question (auto via LangGraph) and the SSE
+panel streams every step. v2 adds **cost & token accounting per query** (estimated from
+model + token counts) and **per-node latency**, both surfaced in the trace and a small
+cost line in the UI.
+
+### Layer 5 — Quality gate
+A **golden set** of (question → expected-grounding) cases. Metrics: faithfulness,
+answer-relevance, context-precision (Ragas/DeepEval), judged by a free LLM. Runs in CI
+on every PR; a regression below threshold fails the build. This is the DevOps proof
+that the harness has a quality contract, not vibes.
+
+### Layer 6 — Operations
+A **GitHub Actions** pipeline: `lint → typecheck → test → eval → docker build`, with
+preview deploys per PR. Sessions formalize into tenants with **Postgres RLS** and
+per-tenant scoping/caps. Deploy target stays Render (Docker, free tier).
+
+---
+
+## 5. Non-goals (read this before judging the design)
+
+- **Not reimplementing an agent framework.** Groundscope is built *on* LangGraph and
+  MCP. The contribution is the operational layer around the agent — fan-out
+  orchestration, evals-in-CI, observability, cost control, multi-tenancy — **not** a
+  from-scratch graph engine.
+- **Not a better answer engine.** Answer quality is intentionally bounded; the demo
+  workload exists to exercise the harness.
+- **Not a Google-AI-Mode clone.** Cloning a consumer search product is the wrong axis;
+  the differentiator is production system rigor.
+- **No swarm / peer-debate agents.** Supervisor is easier to trace and audit; swarm
+  only wins on latency, which is not a goal here.
+- **No paid tiers.** Every layer has a $0 path or it doesn't ship.
+
+---
+
+## 6. Free-tier stack (verified, current)
+
+| Concern | Choice | Note |
 |---|---|---|
-| Orchestration | **LangGraph** (MIT) | free OSS; Platform cloud is the paid skip |
-| LLM | **Groq** free (Llama/Qwen) + **Gemini** free failover | Groq ~30 RPM/1K RPD; Gemini as 2nd tier |
-| Embeddings | **local fastembed / BGE-M3** | free forever, no rate limit (current v1) |
-| Vector DB | **Supabase pgvector** (current) or Qdrant 1GB free | keep Supabase (does vector + metadata) |
-| Relational/checkpointer | **Supabase/Neon Postgres** | LangGraph Postgres checkpointer lives here |
-| Web search | **Tavily** ~1K/mo (current) | Brave free tier ended Feb 2026 |
-| Reranker | **BGE-reranker-v2-m3** (local) | ~350ms CPU, free |
-| Memory | **Mem0** or LangGraph store | self-host = no limits |
-| Observability | **LangSmith** free 5K traces/mo (current) | or self-host Langfuse |
+| Orchestration | **LangGraph** (MIT) | OSS core free; Platform cloud is the paid skip |
+| Reasoning LLM | **Groq** (Llama 3.3 70B / 3.1 8B) + optional **Gemini** failover | Groq free tier, no card |
+| Embeddings | **local fastembed `bge-small`** (384-dim) | free forever, no rate limit |
+| Vector + relational + checkpointer | **Supabase Postgres + pgvector** | one DB; session pooler (IPv4) |
+| Web search | **Tavily** (~1K/mo) + **Gemini grounding** tool | both free tier |
+| Observability | **LangSmith** (free 5K traces/mo) | nested graph traces auto via LangGraph |
 | Eval | **Ragas / DeepEval** | libs free; judge on Groq/Gemini |
-| Guardrails | **LLM Guard** (PII/prompt-injection) | self-host, no per-call cost |
-| Queue/backpressure | **Upstash QStash** 1K/day | or self-host Redis |
-| Multi-tenancy | **Postgres RLS** + per-tenant vector namespace | architectural, $0 |
-| Hosting | **Koyeb** free (no sleep) or Render | Koyeb stays warm; Fly no longer free |
-| CI/CD | **GitHub Actions** free | public repos free |
+| Guardrails | **LLM Guard** (self-host) | no per-call cost |
+| Multi-tenancy | **Postgres RLS** + per-tenant scoping | architectural, $0 |
+| Hosting | **Render** (Docker free) + **Vercel** (portfolio) | current live deploy |
+| CI/CD | **GitHub Actions** | public repo free |
 
 Everything stays $0.
 
 ---
 
-## 6. Phased roadmap (each phase = a resume-grade capability)
+## 7. Framework choice — stay on LangGraph (condensed)
 
-- **v2.0 — Multi-agent core.** Expand `graph.py` into a supervisor StateGraph: planner → parallel workers (doc/web/metadata via Send API) → aggregator → **evaluator (CRAG grader)** → synthesizer. Add the **Postgres checkpointer** (durable). LangSmith now shows one nested trace per question. *→ "supervisor multi-agent + durable checkpointing + evaluator."*
-- **v2.1 — Retrieval quality.** Hybrid retrieval (**pgvector + Postgres tsvector BM25** fusion) + **BGE reranker**. *→ "hybrid RAG + reranking," matches the Etech7 BM25+vector bullet.*
-- **v2.2 — Resilience + guardrails.** **Model router** (Groq→Gemini failover), **LLM circuit breaker**, **LLM Guard** (PII/prompt-injection), token/loop budget caps. *→ "circuit breaker, model routing/failover, guardrails."*
-- **v2.3 — Memory.** **Mem0 / LangGraph store** for cross-session episodic + semantic memory (remember a user's docs and past questions). *→ "agent memory."*
-- **v2.4 — Eval harness.** **Ragas/DeepEval** golden-set in CI (GitHub Actions), judged by a free LLM — faithfulness, answer-relevance, context-precision. *→ "evaluation of agent behavior," directly from the resume summary.*
-- **v2.5 — Multi-tenancy.** Formalize sessions as tenants: **Postgres RLS** + per-tenant vector scoping + **per-tenant concurrency caps**. *→ "multi-tenant … per-tenant concurrency caps."*
-- **v2.6 — Human-in-the-loop.** A LangGraph `interrupt()` gate before a "sensitive action" (e.g., writing a note / sending an email tool) with approve/edit/reject, resumed via the durable checkpointer. *→ "human-in-the-loop gate + interrupt/resume."*
-- **v2.7 — MCP.** Expose Groundscope's tools as a **FastMCP server** (mirrors the Etech7 33-endpoint server) and/or consume external MCP tools. *→ "MCP tool servers."*
-
-Do them in order; **v2.0 + v2.1 + v2.4** alone already read as a production agentic-RAG system.
-
----
-
-## 7. What v2 proves (resume mapping)
-
-After v2, Groundscope demonstrably shows, as a clickable artifact, the exact phrases on the Etech7 resume: *production multi-agent **LangGraph** orchestration, supervisor/planner-workers with parallel fan-out, an **evaluator** node, **human-in-the-loop** gate, durable **checkpointing** with interrupt/resume, **model routing/failover**, **MCP** tool-use, **hybrid RAG** + reranking, **circuit breaker** + per-tenant caps, **LangSmith** observability, and an **evaluation** harness* — all for $0, with the agent's reasoning visible live. It turns the resume bullets into something a hiring manager can run.
+LangGraph uniquely gives the production triad for free in its OSS core: **durable
+checkpointing + native HITL interrupts + LangSmith tracing**. A working LangGraph
+engine already exists in the repo (`agent/graph.py`); v2 expands it rather than
+rebuilding. Alternatives considered and why they lose here: CrewAI (rigid for dynamic
+flow, weaker audit), OpenAI Agents SDK (provider lock-in, conflicts with free-Groq),
+LlamaIndex Workflows (great RAG, weaker complex orchestration), AutoGen/AG2
+(non-deterministic, hard to trace), Smolagents (build-everything-yourself + sandbox
+risk). Temporal is a durable-execution backbone, not an agent framework — LangGraph
+checkpointing is enough for v2.
 
 ---
 
 ## 8. Open decisions
-1. Build the whole roadmap, or start with **v2.0 (multi-agent core)** and iterate?
-2. Keep **Supabase** (vector+metadata+checkpointer in one) vs. split vector to Qdrant — recommend keep Supabase for simplicity.
-3. Verify the existing **LangGraph engine** first (it's the foundation for all of v2).
+1. Build the full spine, or ship **Layer 1 (fan-out) + Layer 5 (evals-in-CI)** first as
+   the v2.0 increment? (Recommend the latter — orchestration flex + DevOps flex in one.)
+2. Keep Supabase as the single DB (vector + metadata + checkpointer) vs. split — keep
+   Supabase for simplicity.
+3. UI reskin (warm-dark + gold, "Connected Tools" panel) — designed separately.
