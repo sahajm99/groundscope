@@ -1,26 +1,26 @@
 # Blocked items
 
-## Supabase project unreachable (live grounded-answer check)
-- Observed 2026-09-12: `DATABASE_URL` (aws-1-us-east-1 session pooler) returns
-  `FATAL: (ENOTFOUND) tenant/user postgres.<ref> not found`; the direct host
-  `db.<ref>.supabase.co` does not resolve. This is what a **paused** (or deleted) free
-  project looks like. The live site's `/health` reports `db_reachable: false` and every
-  knowledge question fails with `OperationalError`.
-- Not obtainable here: a Supabase personal access token (needed for the Management API
-  restore endpoint) or dashboard access. No related email found in Gmail.
-- **To unblock:** open https://supabase.com/dashboard, restore (unpause) the project, or
-  create a new one and set `DATABASE_URL` on Render; then re-seed the corpus:
-  `python -m scripts.seed data/sample.txt` (schema is created idempotently on boot).
-- Everything else in v2.0 is proven without it: CI uses a hermetic pgvector container;
-  the live web-fallback path keeps working because tool errors now degrade gracefully.
+Nothing is blocked as of 2026-09-12 15:20 UTC.
 
-## GitHub Actions secrets for the eval job (needs one manual step)
-- The autonomous session was not permitted to write repository secrets. The CI eval job
-  (`evals` in `.github/workflows/ci.yml`) needs the Groq key and the Tavily key, and it
-  fails with an explicit "missing secret" error rather than skipping.
-- **To unblock (two commands, values from your local `.env`):**
-  ```bash
-  gh secret set LLM_API_KEY    -R sahajm99/groundscope   # paste the Groq key
-  gh secret set TAVILY_API_KEY -R sahajm99/groundscope   # paste the Tavily key
-  ```
-  Then re-run the latest workflow (`gh run rerun --failed`) and the badge turns green.
+## Resolved
+
+### Supabase project paused (resolved 2026-09-12)
+- The free project behind `DATABASE_URL` had auto-paused; the pooler returned
+  `FATAL: (ENOTFOUND) tenant/user ... not found` and every knowledge question on the live
+  site failed. Resumed from the dashboard; `/health` reports `db_reachable: true` again.
+- Free Supabase projects pause after about a week idle. The keep-warm cron in
+  `scripts/keepwarm.md` (ping `/health`, which touches the DB) prevents it.
+
+### GitHub Actions secrets (resolved 2026-09-12)
+- `LLM_API_KEY` and `TAVILY_API_KEY` are set on `sahajm99/groundscope` (`gh secret list`).
+  The CI eval and smoke steps need them and fail loudly without them.
+
+### Groq retired the Llama 3.x models (resolved 2026-09-12)
+- `llama-3.3-70b-versatile` and `llama-3.1-8b-instant` return 404. Defaults moved to
+  `openai/gpt-oss-120b` (agent) and `openai/gpt-oss-20b` (fallback, eval judge) in
+  `app/config.py`, `render.yaml`, `.env.example`. If `LLM_MODEL` was set by hand in the
+  Render dashboard, that value overrides the blueprint and must be updated there too.
+
+## Open decisions (not blockers)
+- A free Gemini API key as a third LLM tier and separate judge quota (see `docs/PLAN.md` 0.3).
+- Which public document seeds the live demo (see `docs/PLAN.md` 3.3).
