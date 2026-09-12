@@ -57,3 +57,26 @@ Resumed sessions: read this, then `docs/DECISIONS.md` and `docs/BLOCKED.md`, the
   longer list unused sources), report in `.gstack/qa-reports/`.
 - Next: real local eval run numbers; push branch; CI run; deliberate-regression proof.
 
+
+## Phase 0 (infra): DONE (2026-09-12 15:20 UTC)
+- Supabase project resumed by Sahaj; `/health` on the live site reports `db_reachable: true`.
+- GitHub secrets `LLM_API_KEY`, `TAVILY_API_KEY` set. No Gemini key (judge stays on Groq).
+
+## Phase 1 (eval gate green locally): in progress
+- Done: round-robin branch merge + 6 whole-chunk synthesis budget (was cutting chunks at
+  1,200 chars); strict judge model recorded per case; rate-limit retry; Unicode-tolerant
+  checks; OR-semantics keyword leg; metadata cases skip the judge.
+- Eval runs so far: run 2 27% checks (planner mis-routing, dedupe bug), run 3 83% (Unicode
+  checks), run 4 83% (chunk truncation), run 5 aborted (judge model hit Groq's ~200K
+  tokens/day cap). Judge moved to `qwen/qwen3.8-27b` (own budget). Run 6 in progress.
+
+## Phase 2 (hardening): DONE, 13 tests in `tests/test_hardening.py`
+- Bus rebuild under a lock, old bus drained before close, keep-alive timeout marks the bus
+  broken, `/ask` in-flight cap (503), LLM client timeouts, 16-thread pool, calculator caps,
+  4 tool calls per round, `/health` reads the cached bus, no session id in trace events,
+  eval hard checks (citation-kind failures fail the run), web server keep-alive, UI
+  try/finally. 79 tests pass.
+
+## Phase 3 (answer experience): 3.1 and 3.2 done, 3.3 pending a document choice
+- Goal paragraph in README and design doc; sources block with title link, domain, and the
+  snippet used (`docs/screenshots/sources-block.png` pending a quota-free browser run).
