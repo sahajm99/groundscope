@@ -115,8 +115,7 @@ python -m scripts.build_pack data/packs/<pack>      # -> build/records.jsonl, bu
 python -m scripts.seed_pack data/packs/<pack>       # seeds the manifest's session; idempotent per file
 ```
 
-Never seed a restricted edition into a public deployment. The live demo serves only the
-public-domain Bhagavad-Gita.
+Never seed a restricted edition into a public deployment.
 
 ## Tests and evals
 
