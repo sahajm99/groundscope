@@ -1,6 +1,21 @@
 # Blocked items
 
-Nothing is blocked as of 2026-09-12 15:20 UTC.
+Nothing is blocked as of 2026-10-03.
+
+## Watch items (not blockers)
+
+- **Supabase pauses after about a week idle.** `/health` touches the database, and the keep-warm
+  ping in `scripts/keepwarm.md` is a manual cron-job.org setup; there is no record that it was
+  configured. The live site answered with `db_reachable: true` on 2026-10-03.
+- **Free-tier model budgets.** One eval run costs roughly 100K agent tokens against Groq's 200K
+  tokens per day per model. A day with many runs exhausts all three tiers, as on 2026-09-12, and
+  the failures then look like regressions. Avoid redundant runs; Cerebras is not usable on the
+  free tier (402).
+- **The eval step has not yet caught a deliberate regression in CI.** All three test regressions
+  in `docs/PROGRESS.md` went red at earlier pytest stages; the judge-only proof is a local run
+  (`docs/eval-report-regressed-prompt.json`).
+- **Corpus-pack texts are local only.** The Vedanta pack runs on the author's machine; a clone
+  has the engine, the manifest and the golden set (DECISIONS 33, 35).
 
 ## Resolved
 
@@ -21,11 +36,10 @@ Nothing is blocked as of 2026-09-12 15:20 UTC.
   `app/config.py`, `render.yaml`, `.env.example`. If `LLM_MODEL` was set by hand in the
   Render dashboard, that value overrides the blueprint and must be updated there too.
 
-## Open decisions (not blockers)
-- A free Gemini API key as a third LLM tier and separate judge quota (see `docs/PLAN.md` 0.3).
-- Which public document seeds the live demo (see `docs/PLAN.md` 3.3).
-
-## Open (2026-09-12 18:30 UTC)
+### Open decisions of 2026-09-12 (resolved)
+- A free Gemini key as a third LLM tier and separate judge quota: adopted (DECISIONS 23).
+- Which public document seeds the live demo: the Bhagavad-Gita in Edwin Arnold's translation
+  (DECISIONS 26).
 
 ### Resolved 18:43 UTC: Render dashboard model names
 - Set by the user; a grounded answer (resume PDF) and a web answer (2025 Nobel Prize in
@@ -35,7 +49,9 @@ Nothing is blocked as of 2026-09-12 15:20 UTC.
   dashboard: `LLM_MODEL=openai/gpt-oss-120b`, `LLM_FALLBACK_MODEL=openai/gpt-oss-20b`, and
   `GEMINI_API_KEY`. Nothing to deploy: Groq hosts the models; only the names change.
 
-### Free-tier daily budgets exhausted; main badge run red
+### Free-tier daily budgets exhausted; main badge run red (resolved 2026-09-13)
+- Resolved: the rate-limit fix was pushed once the budgets returned and main run 34777254872 went
+  green (113 tests; eval gate pass). The account below is kept as the record of what happened.
 - At 18:10 UTC Groq reported `openai/gpt-oss-120b` at 199,585 / 200,000 tokens per day and
   `openai/gpt-oss-20b` at 199,123 / 200,000 (rolling 24 h window), and Gemini
   `gemini-3.5-flash-lite` at 500 / 500 requests per day (resets 07:00 UTC). One full eval run
