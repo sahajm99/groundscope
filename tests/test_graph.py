@@ -199,6 +199,37 @@ async def test_tool_worker_fails_over_to_the_fallback_model(monkeypatch):
     assert any(m == graph.settings.llm_fallback_model for m, _ in log)
 
 
+async def test_tool_worker_hands_content_block_results_to_the_model_as_text(monkeypatch):
+    """langchain-mcp-adapters >= 0.2 returns content blocks. The model and the trace must see
+    the tool's text, not the repr of a list of blocks."""
+    from langchain_core.messages import AIMessage, ToolMessage
+    from langchain_core.tools import StructuredTool
+
+    async def calc(**kw):
+        return [{"type": "text", "text": "42", "id": "lc_1"}]
+
+    seen: list = []
+
+    class Chat:
+        async def ainvoke(self, msgs):
+            seen.append(list(msgs))
+            if any(isinstance(m, ToolMessage) for m in msgs):
+                return AIMessage(content="FINAL 42")
+            return AIMessage(content="", tool_calls=[{"name": "calculator", "args": {"expression": "6*7"}, "id": "c1"}])
+
+    monkeypatch.setattr(graph, "complete_json", lambda s, u, **kw: {"route": "tools", "subqueries": []})
+    monkeypatch.setattr(graph, "_chat_model", lambda tools, model: Chat())
+    bus = FakeBus({})
+    bus.open_tools = lambda: [
+        StructuredTool.from_function(coroutine=calc, name="calculator", description="calc", infer_schema=False)
+    ]
+    events, answer = await run("6*7?", bus, monkeypatch)
+    tool_msg = next(m for m in seen[-1] if isinstance(m, ToolMessage))
+    assert tool_msg.content == "42"
+    assert [e["summary"] for e in events if e["type"] == "tool_result"] == ["42"]
+    assert answer["answer"] == "FINAL 42"
+
+
 async def test_synthesis_sees_the_whole_chunk(monkeypatch):
     """Found by the evals: sources were cut to 1,200 chars but a 400-word chunk is ~2,500,
     so facts in the second half of a chunk were never shown to the model (it refused)."""

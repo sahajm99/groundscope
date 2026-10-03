@@ -44,6 +44,19 @@ async def test_call_non_json_raises_toolerror():
         await _bus().call("calculator", expression="2+2")
 
 
+async def test_call_reads_json_from_a_text_content_block():
+    """langchain-mcp-adapters >= 0.2 returns a tool's output as content blocks, not a string."""
+    blocks = [{"type": "text", "text": json.dumps({"summary": "ok", "sources": []}), "id": "lc_1"}]
+    bus = ToolBus({"s": [_fake("hybrid_search", lambda **kw: blocks)]})
+    assert await bus.call("hybrid_search", session_id="s", query="q") == {"summary": "ok", "sources": []}
+
+
+async def test_call_raw_joins_the_text_of_several_content_blocks():
+    blocks = [{"type": "text", "text": "4", "id": "lc_1"}, {"type": "text", "text": "2", "id": "lc_2"}]
+    bus = ToolBus({"s": [_fake("calculator", lambda **kw: blocks)]})
+    assert await bus.call_raw("calculator", expression="6*7") == "42"
+
+
 async def test_tool_exception_becomes_toolerror():
     def boom(**kw):
         raise ToolException("connection to server at 10.0.0.1 failed")
@@ -103,16 +116,17 @@ async def test_keepalive_retrieval_session_is_reused(db, monkeypatch):
     """groundscope-retrieval is marked keepalive in mcp.json: one session, many calls;
     a per-call server (utils) opens a session per call."""
     import langchain_mcp_adapters.client as client_mod
+    import langchain_mcp_adapters.sessions as sessions_mod
     import langchain_mcp_adapters.tools as tools_mod
 
     from app.agent.mcp_registry import load_servers
 
     opened: list[str] = []
-    real = tools_mod.create_session
+    real = sessions_mod.create_session
 
-    def counting(connection):
+    def counting(connection, **kwargs):
         opened.append(connection["args"][0])
-        return real(connection)
+        return real(connection, **kwargs)
 
     monkeypatch.setattr(tools_mod, "create_session", counting)
     monkeypatch.setattr(client_mod, "create_session", counting)

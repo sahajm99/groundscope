@@ -30,7 +30,7 @@ from langgraph.types import Send, StreamWriter
 from app.agent import tools
 from app.agent.llm import complete_ex, complete_json, reasoning_kwargs, same_tier_wait_s
 from app.agent.loop import _SYNTH_SYS, is_metadata
-from app.agent.toolbus import CONTEXT_TOOLS, ToolError, ToolUnavailable, get_bus
+from app.agent.toolbus import CONTEXT_TOOLS, ToolError, ToolUnavailable, get_bus, tool_text
 from app.agent.trace import TraceEvent
 from app.config import settings
 from app.ingestion.embedder import get_embedder
@@ -290,8 +290,8 @@ async def tool_worker_node(state: S, writer: StreamWriter) -> dict:
             try:
                 if tool is None:
                     raise ToolUnavailable(tc["name"])
-                result = await asyncio.wait_for(tool.ainvoke(tc["args"]), settings.tool_timeout_s)
-                shown = str(result)[:200]
+                result = tool_text(await asyncio.wait_for(tool.ainvoke(tc["args"]), settings.tool_timeout_s))
+                shown = result[:200]
             except Exception as e:  # noqa: BLE001
                 result = f"error: {_safe(e)}"
                 shown = result

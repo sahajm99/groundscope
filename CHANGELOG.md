@@ -3,6 +3,21 @@
 All notable changes to Groundscope. Format follows Keep a Changelog; versions follow the
 roadmap milestones in `docs/v2-roadmap.md`.
 
+## [Unreleased]
+
+### Changed
+- **Agent stack on LangGraph 1.2.** `langgraph` 0.2.39 to 1.2.12, `langchain-core` 0.3.86 to
+  1.6.6, `langchain-openai` 0.2.14 to 1.6.7, `langchain-mcp-adapters` 0.1.7 to 0.3.2 and the
+  OpenAI SDK 1.109 to 3.24. The family moves together: LangGraph 1.x needs `langchain-core`
+  1.4.7 or later. This unblocks v2.1, whose `interrupt()` and Postgres checkpointer the old
+  release did not ship (DECISIONS 34).
+
+### Fixed
+- **Tool results as content blocks.** The newer MCP adapters return a tool's output as a list
+  of content blocks instead of a string. `toolbus.tool_text` reads their text, so the bus still
+  parses JSON results and the ReAct loop hands the model and the trace the tool's text rather
+  than the repr of a list.
+
 ## [2.0.1] - 2026-09-12
 
 ### Added

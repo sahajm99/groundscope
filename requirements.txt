@@ -10,12 +10,12 @@ pydantic-settings==2.5.2
 python-dotenv==1.0.1
 
 # Agent + LLM
-langgraph==0.2.39
-langchain-core==0.3.86
-langchain-openai==0.2.14          # ChatOpenAI.bind_tools over Groq (tool-worker)
-langchain-mcp-adapters==0.1.7     # plug-and-play MCP tools (MultiServerMCPClient)
+langgraph==1.2.12
+langchain-core==1.6.6
+langchain-openai==1.6.7           # ChatOpenAI.bind_tools over Groq (tool-worker)
+langchain-mcp-adapters==0.3.2     # plug-and-play MCP tools (MultiServerMCPClient)
 mcp==1.27.2                       # MCP client + FastMCP server
-openai==1.109.1                   # OpenAI-compatible client (works with Groq base_url)
+openai==3.24.0                    # OpenAI-compatible client (works with Groq base_url)
 langsmith==0.8.9                  # observability (LangSmith — your Etech7 stack)
 
 # Embeddings (local, no API key, open-source ONNX)

@@ -44,6 +44,21 @@ class _NoArgs(BaseModel):
     pass
 
 
+def tool_text(raw: Any) -> str:
+    """The text of a tool result. langchain-mcp-adapters >= 0.2 returns a list of LangChain
+    content blocks ({"type": "text", "text": ...}); earlier versions returned a bare string.
+    Non-text blocks (images, audio) carry nothing this text-only agent can use and are dropped."""
+    if isinstance(raw, list):
+        return "".join(_part_text(p) for p in raw)
+    return str(raw)
+
+
+def _part_text(part: Any) -> str:
+    if isinstance(part, dict):
+        return str(part.get("text", "")) if part.get("type") == "text" else ""
+    return str(part)
+
+
 class ToolBus:
     def __init__(self, tools_by_server: dict[str, list[BaseTool]]):
         self._by_server = {s: list(ts) for s, ts in tools_by_server.items()}
@@ -76,9 +91,7 @@ class ToolBus:
             self.broken = True
             log.warning("MCP transport failure on %s: %s: %s", name, type(e).__name__, e)
             raise ToolError(f"{name}: {type(e).__name__}: {e}") from e
-        if isinstance(raw, list):
-            raw = "".join(str(x) for x in raw)
-        return str(raw)
+        return tool_text(raw)
 
     async def call(self, name: str, **args: Any) -> dict:
         raw = await self.call_raw(name, **args)

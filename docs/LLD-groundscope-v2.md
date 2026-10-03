@@ -139,8 +139,8 @@ synth | metadata | tools → END
 
 ### 2.4 Streaming (correction vs. v1 LLD)
 The graph uses an **injected** `StreamWriter` (`from langgraph.types import
-StreamWriter`, a node parameter) — **not** `get_stream_writer` (which does not exist in
-langgraph 0.2.39). `run_agent_graph(...).astream(stream_mode="custom")` yields the same
+StreamWriter`, a node parameter) — **not** `get_stream_writer`, which did not exist in
+langgraph 0.2.39 when this was written. It exists in 1.2, and the injected writer still works there. `run_agent_graph(...).astream(stream_mode="custom")` yields the same
 `{"kind":"trace"|"answer", "payload":...}` envelope. v2 trace payloads add
 `branch:int|None`, `tokens:int|None`, `cost_usd:float|None`.
 
