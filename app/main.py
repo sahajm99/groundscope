@@ -4,6 +4,8 @@ Single deployable: serves the API and the same-origin static frontend, so the
 SSE trace stream never crosses origins.
 """
 
+import asyncio
+import contextlib
 import logging
 from pathlib import Path
 
@@ -40,7 +42,6 @@ def _startup():
 async def _warm_tool_bus():
     """Start the MCP servers (keepalive retrieval child) before the first question, and give
     the loop a thread pool that fits fan-out (default is 5 threads on a 1-vCPU host)."""
-    import asyncio
     from concurrent.futures import ThreadPoolExecutor
 
     asyncio.get_running_loop().set_default_executor(ThreadPoolExecutor(max_workers=16, thread_name_prefix="gs"))
@@ -54,6 +55,51 @@ async def _warm_tool_bus():
 @app.on_event("shutdown")
 async def _close_tool_bus():
     await close_bus()
+
+
+CLEANUP_INTERVAL_S = 600
+_cleanup_task: asyncio.Task | None = None
+
+
+def purge_once() -> int:
+    """Forget idle sessions and delete uploads past the session TTL. Returns the number of
+    documents removed. Never raises: a paused database must not take the loop or startup down."""
+    from app import sessions, storage
+
+    sessions.purge_expired()
+    if not settings.db_configured:
+        return 0
+    try:
+        return storage.purge_expired_uploads(settings.session_ttl_seconds)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Upload cleanup skipped: %s: %s", type(e).__name__, e)
+        return 0
+
+
+async def _cleanup_loop(interval_s: float = CLEANUP_INTERVAL_S) -> None:
+    """Sweep now and then every interval. On a free host that sleeps when idle, 'now' is each
+    wake-up, so an upload is gone the first time the service runs after its hour is over."""
+    while True:
+        removed = await asyncio.to_thread(purge_once)
+        if removed:
+            logger.info("Purged %d expired upload(s).", removed)
+        await asyncio.sleep(interval_s)
+
+
+@app.on_event("startup")
+async def _start_cleanup():
+    global _cleanup_task
+    _cleanup_task = asyncio.create_task(_cleanup_loop(), name="upload-cleanup")
+
+
+@app.on_event("shutdown")
+async def _stop_cleanup():
+    global _cleanup_task
+    if _cleanup_task is not None:
+        _cleanup_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await _cleanup_task
+        _cleanup_task = None
 
 
 from app.api import ask as ask_api  # noqa: E402

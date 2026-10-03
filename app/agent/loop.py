@@ -39,7 +39,10 @@ def is_metadata(question: str) -> bool:
 
 _SYNTH_SYS = (
     "You answer strictly from the SOURCES block below. Never use outside knowledge. "
-    "Cite every claim as [<file> p.N] for documents or [Web: <title> — <url>] for web. "
+    "Cite every claim in square brackets using the source's label exactly as given: "
+    "[<file> p.N] for uploaded documents, the unit label for corpus texts "
+    "(e.g. [Isha 2 · Commentary · Shankara, tr. Swami Gambhirananda]), or [Web: <title> — <url>] for web. "
+    "When sources from different commentators or translators disagree, attribute each view to its named source. "
     "If the sources answer only part of the question, answer that part with citations and say "
     "plainly which part the sources do not cover. Only if the sources contain nothing relevant, reply EXACTLY: "
     "\"I can't ground an answer to that in your documents or the web.\" "
@@ -82,7 +85,7 @@ async def run_agent(session_id: str, question: str) -> AsyncIterator[dict]:
 
     # ── Node: hybrid_search (round 1) ─────────────────────────────
     t0 = time.monotonic()
-    yield trace(type="tool_call", tool="hybrid_search", input=question[:200], summary="Searching your documents (vector + BM25).")
+    yield trace(type="tool_call", tool="hybrid_search", input=question[:200], summary="Searching your documents (vector + keyword).")
     summary, sources, best = await asyncio.to_thread(tools.hybrid_search, session_id, question)
     collected.extend(sources)
     yield trace(type="tool_result", tool="hybrid_search", summary=summary, score=best, ms=_ms(t0),

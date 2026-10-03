@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
+from psycopg.types.json import Jsonb
 
 from app.config import settings
 
@@ -72,12 +73,17 @@ def init_schema() -> None:
         )
         conn.execute("CREATE INDEX IF NOT EXISTS chunks_session_idx ON chunks (session_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS docs_session_idx ON documents (session_id)")
-        # Full-text (BM25-style) column for hybrid retrieval — generated + backfilled.
+        # Full-text column for the keyword leg of hybrid retrieval — generated + backfilled.
+        # Ranked with ts_rank, which is not BM25: no inverse document frequency, no length saturation.
         conn.execute(
             "ALTER TABLE chunks ADD COLUMN IF NOT EXISTS ts tsvector "
             "GENERATED ALWAYS AS (to_tsvector('english', text)) STORED"
         )
         conn.execute("CREATE INDEX IF NOT EXISTS chunks_ts_idx ON chunks USING GIN (ts)")
+        # Corpus-pack records (data/packs) carry structured provenance: unit ref, part,
+        # commentator, translator, citation label. Plain uploads leave it NULL.
+        conn.execute("ALTER TABLE chunks ADD COLUMN IF NOT EXISTS metadata jsonb")
+        conn.execute("CREATE INDEX IF NOT EXISTS chunks_meta_idx ON chunks USING GIN (metadata)")
 
 
 @dataclass
@@ -86,6 +92,7 @@ class Hit:
     file_name: str
     page_number: int
     distance: float | None  # best cosine distance of the fused set (lower = closer); None if no dense hits
+    metadata: dict | None = None  # corpus-pack record metadata (ref, part, citation, ...) or None
 
 
 def add_document(
@@ -93,15 +100,23 @@ def add_document(
     doc_id: str,
     file_name: str,
     pages: int,
-    rows: list[tuple[int, int, str, list[float]]],
+    rows: list[tuple],
 ) -> int:
-    """Insert chunks + a documents row. rows = (page_number, chunk_index, text, embedding)."""
+    """Insert chunks + a documents row.
+    rows = (page_number, chunk_index, text, embedding) or, for corpus-pack records,
+    (page_number, chunk_index, text, embedding, metadata_dict)."""
+
+    def _row(r: tuple) -> tuple:
+        pg, ci, txt, emb = r[0], r[1], r[2], r[3]
+        meta = r[4] if len(r) > 4 and r[4] is not None else None
+        return (session_id, doc_id, file_name, pg, ci, txt, _vec(emb), Jsonb(meta) if meta is not None else None)
+
     with _connect() as conn:
         with conn.cursor() as cur:
             cur.executemany(
-                "INSERT INTO chunks (session_id, doc_id, file_name, page_number, chunk_index, text, embedding)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                [(session_id, doc_id, file_name, pg, ci, txt, _vec(emb)) for (pg, ci, txt, emb) in rows],
+                "INSERT INTO chunks (session_id, doc_id, file_name, page_number, chunk_index, text, embedding, metadata)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                [_row(r) for r in rows],
             )
         conn.execute(
             "INSERT INTO documents (doc_id, session_id, file_name, pages, chunk_count)"
@@ -117,7 +132,7 @@ def vector_search(session_id: str, query_embedding: list[float], limit: int = 6)
     with _connect() as conn:
         cur = conn.execute(
             """
-            SELECT text, file_name, page_number, (embedding <=> %s) AS distance
+            SELECT text, file_name, page_number, (embedding <=> %s) AS distance, metadata
             FROM chunks
             WHERE session_id IN (%s, %s)
             ORDER BY embedding <=> %s
@@ -125,7 +140,10 @@ def vector_search(session_id: str, query_embedding: list[float], limit: int = 6)
             """,
             (qv, session_id, GLOBAL_SESSION, qv, limit),
         )
-        return [Hit(text=r[0], file_name=r[1], page_number=r[2], distance=float(r[3])) for r in cur.fetchall()]
+        return [
+            Hit(text=r[0], file_name=r[1], page_number=r[2], distance=float(r[3]), metadata=r[4])
+            for r in cur.fetchall()
+        ]
 
 
 _WORD = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?")
@@ -146,13 +164,13 @@ def _or_tsquery(query_text: str) -> str:
 def hybrid_search(
     session_id: str, query_embedding: list[float], query_text: str, limit: int = 6
 ) -> tuple[list[Hit], float | None]:
-    """Hybrid retrieval: dense (pgvector cosine) + sparse (Postgres BM25/FTS),
+    """Hybrid retrieval: dense (pgvector cosine) + sparse (Postgres full-text, ts_rank),
     fused with Reciprocal Rank Fusion. Returns (fused hits, best vector distance).
     The best vector distance is the relevance-gate signal."""
     qv = _vec(query_embedding)
     with _connect() as conn:
         vrows = conn.execute(
-            "SELECT text, file_name, page_number, (embedding <=> %s) AS dist FROM chunks "
+            "SELECT text, file_name, page_number, (embedding <=> %s) AS dist, metadata FROM chunks "
             "WHERE session_id IN (%s, %s) ORDER BY embedding <=> %s LIMIT 10",
             (qv, session_id, GLOBAL_SESSION, qv),
         ).fetchall()
@@ -161,7 +179,7 @@ def hybrid_search(
         # degraded to dense-only. ts_rank still rewards chunks matching more terms.
         tsq = _or_tsquery(query_text)
         krows = conn.execute(
-            "SELECT text, file_name, page_number FROM chunks "
+            "SELECT text, file_name, page_number, metadata FROM chunks "
             "WHERE session_id IN (%s, %s) AND ts @@ to_tsquery('english', %s) "
             "ORDER BY ts_rank(ts, to_tsquery('english', %s)) DESC LIMIT 10",
             (session_id, GLOBAL_SESSION, tsq, tsq),
@@ -176,16 +194,27 @@ def hybrid_search(
     for rank, r in enumerate(vrows):
         k = _key(r)
         scores[k] = scores.get(k, 0.0) + 1.0 / (K + rank)
-        meta[k] = (r[0], r[1], r[2])
+        meta[k] = (r[0], r[1], r[2], r[4])
     for rank, r in enumerate(krows):
         k = _key(r)
         scores[k] = scores.get(k, 0.0) + 1.0 / (K + rank)
-        meta.setdefault(k, (r[0], r[1], r[2]))
+        meta.setdefault(k, (r[0], r[1], r[2], r[3]))
 
     best_dist = min((float(r[3]) for r in vrows), default=None)
     fused = sorted(scores, key=lambda k: scores[k], reverse=True)[:limit]
-    hits = [Hit(text=meta[k][0], file_name=meta[k][1], page_number=meta[k][2], distance=best_dist) for k in fused]
+    hits = [
+        Hit(text=meta[k][0], file_name=meta[k][1], page_number=meta[k][2], distance=best_dist, metadata=meta[k][3])
+        for k in fused
+    ]
     return hits, best_dist
+
+
+def delete_document(doc_id: str) -> None:
+    """Remove one document and its chunks. Used to re-seed a corpus-pack file idempotently
+    (pack documents have deterministic doc_ids, so a rebuild replaces rather than duplicates)."""
+    with _connect() as conn:
+        conn.execute("DELETE FROM chunks WHERE doc_id = %s", (doc_id,))
+        conn.execute("DELETE FROM documents WHERE doc_id = %s", (doc_id,))
 
 
 def list_documents(session_id: str) -> list[dict]:
@@ -209,3 +238,23 @@ def purge_session(session_id: str) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM chunks WHERE session_id = %s", (session_id,))
         conn.execute("DELETE FROM documents WHERE session_id = %s", (session_id,))
+
+
+def purge_expired_uploads(ttl_seconds: int) -> int:
+    """Delete visitor uploads older than the session TTL. Returns the number of documents removed.
+
+    A session cookie lives ttl_seconds from its creation and an upload cannot predate its
+    session, so an upload older than the TTL belongs to a session that has already expired.
+    The sweep reads the database rather than the in-memory session map, so it also clears
+    uploads whose sessions a restart forgot. Only cookie sessions (32-character hex ids) are
+    swept: the global corpus and named sessions, such as a pack seeded locally, are kept."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "DELETE FROM documents WHERE session_id ~ '^[0-9a-f]{32}$' "
+            "AND uploaded_at < now() - make_interval(secs => %s) RETURNING doc_id",
+            (ttl_seconds,),
+        ).fetchall()
+        doc_ids = [r[0] for r in rows]
+        if doc_ids:
+            conn.execute("DELETE FROM chunks WHERE doc_id = ANY(%s)", (doc_ids,))
+    return len(doc_ids)

@@ -1,0 +1,21 @@
+# Vedanta corpus pack. Read data/packs/README.md for the document contract.
+
+[pack]
+id = "vedanta"
+name = "Vedanta corpus pack"
+version = "0.1.0"
+description = "Upanishads, Vedanta commentaries and the Bhagavad Gita as verse-addressable records. Phase 1 covers the Isha Upanishad: mantras, Shankara's bhashya (Sanskrit and Gambhirananda's English), and Sri Aurobindo's translation."
+default_school = "advaita"
+web_fallback = false
+seed_session = "GLOBAL"
+
+[[texts]]
+id = "isha"
+title = "Isha Upanishad"
+cite_as = "Isha"
+files = [
+  "texts/isha/isha.md",
+  "texts/isha/isha.shankara.sa.md",
+  "texts/isha/isha.shankara.gambhirananda.md",
+  "texts/isha/isha.aurobindo.md",
+]

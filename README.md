@@ -41,7 +41,7 @@ MCP tool bus (mcp.json → app/agent/mcp_registry.py → app/agent/toolbus.py)
   groundscope-web        web_search                      (keep-alive child)
   groundscope-utils      calculator, current_datetime    (per-call child)
         │
-Supabase Postgres + pgvector (+ BM25 tsvector, RRF fusion) · Groq (tiered router + circuit breaker) · LangSmith
+Supabase Postgres + pgvector (+ full-text tsvector ranked by ts_rank, RRF fusion) · Groq (tiered router + circuit breaker) · LangSmith
 ```
 
 Two rules the design keeps deterministic on purpose:
@@ -90,6 +90,33 @@ whose 18 pages are the 18 chapters (a form feed separates them), so a citation l
 `bhagavad-gita.txt p.2` points at chapter 2 and anyone can check the source. The golden set
 does not use it on purpose: the model knows the Gita by heart, so a Gita case could pass from
 memory without grounding; the eval corpus stays fictional (`data/corpus/`).
+
+### Corpus packs
+
+Groundscope's code is the golden image; a **corpus pack** is the knowledge it is pointed at.
+A pack (`data/packs/<pack>/`) is a TOML manifest plus canonical Markdown documents, one per
+source edition, in which every verse (or chapter, or sutra) is an addressable unit carrying
+its provenance: text, layer, commentator, translator, school, source file and pages. The build
+turns them into verse-level records with a contextual header and a citation label; the seeder
+stores them with `metadata`; the retrieval tool then cites the unit instead of a page:
+`Isha 2 · Commentary · Shankara, tr. Swami Gambhirananda`. The first pack, `data/packs/vedanta`,
+describes the Isha Upanishad: mantras (Devanagari + IAST), Shankara's bhashya in Sanskrit and in
+Gambhirananda's English, and Sri Aurobindo's translation. Contract and rationale:
+`data/packs/README.md`.
+
+The pack's texts are not in this repository. Two of the four editions are under copyright or
+carry a no-repost notice, so `data/packs/*/texts/` and `build/` are gitignored and the Vedanta
+pack runs on the author's machine only. The manifest, the contract and the 20-question golden
+set are tracked. To try the mechanism, write a pack of your own against the contract; the test
+suite builds and seeds a two-verse one (`tests/conftest.py`).
+
+```bash
+python -m scripts.build_pack data/packs/<pack>      # -> build/records.jsonl, build/toc.json
+python -m scripts.seed_pack data/packs/<pack>       # seeds the manifest's session; idempotent per file
+```
+
+Never seed a restricted edition into a public deployment. The live demo serves only the
+public-domain Bhagavad-Gita.
 
 ## Tests and evals
 

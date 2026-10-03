@@ -5,7 +5,29 @@ roadmap milestones in `docs/v2-roadmap.md`.
 
 ## [Unreleased]
 
+### Added
+- **Corpus packs.** A pack (`data/packs/<pack>/`) is a TOML manifest plus canonical Markdown
+  documents, one per source edition, in which every verse is an addressable unit with
+  provenance (text, layer, commentator, translator, school, source file and pages). The
+  contract is in `data/packs/README.md`. `app/ingestion/canonical.py` parses them into
+  verse-level records with a contextual header, a citation label and normalised
+  cross-references (`(Br. I. v. 16)` -> `br.1.5.16`); `scripts/build_pack.py` writes
+  `build/records.jsonl` and a structural `build/toc.json`; `scripts/seed_pack.py` seeds a pack
+  idempotently (deterministic doc ids, re-seeding replaces).
+- **Vedanta pack, phase 1: the Isha Upanishad.** Mantras in Devanagari and IAST
+  (sanskritdocuments.org, cross-checked with Wikisource), Shankara's bhashya in Sanskrit and in
+  Swami Gambhirananda's English (recovered from a re-typeset OCR file, with the footnotes read
+  back from the printed scan), and Sri Aurobindo's translation with his notes. 170 records,
+  a 20-question golden set (`data/packs/vedanta/golden.jsonl`). The texts themselves stay local:
+  `data/packs/*/texts/` and `build/` are gitignored, because this repository is public and two
+  of the editions are not free to republish (DECISIONS 35).
+- **Chunk metadata.** `chunks.metadata jsonb` (GIN-indexed) carries a record's provenance;
+  `Hit.metadata` returns it from both legs of the hybrid search; `storage.delete_document`.
+
 ### Changed
+- **Unit citations.** The retrieval tool labels a pack chunk by its unit
+  (`Isha 2 · Commentary · Shankara, tr. Swami Gambhirananda`, detail `isha.2`) and attaches
+  its metadata; plain uploads still cite `file p.N`.
 - **Agent stack on LangGraph 1.2.** `langgraph` 0.2.39 to 1.2.12, `langchain-core` 0.3.86 to
   1.6.6, `langchain-openai` 0.2.14 to 1.6.7, `langchain-mcp-adapters` 0.1.7 to 0.3.2 and the
   OpenAI SDK 1.109 to 3.24. The family moves together: LangGraph 1.x needs `langchain-core`
@@ -17,6 +39,15 @@ roadmap milestones in `docs/v2-roadmap.md`.
   of content blocks instead of a string. `toolbus.tool_text` reads their text, so the bus still
   parses JSON results and the ReAct loop hands the model and the trace the tool's text rather
   than the repr of a list.
+- **Uploads are deleted when their session ends.** `session_ttl_seconds` promised an hour, but
+  nothing called the purge functions and the session map is lost on every restart, so uploads
+  stayed forever. `storage.purge_expired_uploads` sweeps visitor uploads older than the TTL by
+  the database's clock, at startup and every ten minutes. The global corpus and named sessions
+  are kept.
+- **The keyword leg is called what it is.** The trace, the tool summaries, the README and the
+  design docs said BM25. The code ranks an OR'd `to_tsquery` with `ts_rank`, which is Postgres
+  full-text search without BM25's inverse document frequency or length saturation. Labels only;
+  the ranking is unchanged.
 
 ## [2.0.1] - 2026-09-12
 

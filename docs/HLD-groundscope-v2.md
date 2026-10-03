@@ -148,7 +148,7 @@ Every node emits a `TraceEvent` → (a) SSE panel, (b) LangSmith span. v2 events
 
 ## 7. Migration from v1 (what changes, what stays)
 
-**Stays:** ingestion pipeline, pgvector + BM25 hybrid storage, the corrective-RAG gate,
+**Stays:** ingestion pipeline, pgvector + full-text hybrid storage, the corrective-RAG gate,
 the tiered LLM router + circuit breaker, the SSE trace contract, Render deploy.
 
 **Changes:** native tools → MCP servers (structured returns, injected session);
