@@ -39,6 +39,11 @@ roadmap milestones in `docs/v2-roadmap.md`.
   of content blocks instead of a string. `toolbus.tool_text` reads their text, so the bus still
   parses JSON results and the ReAct loop hands the model and the trace the tool's text rather
   than the repr of a list.
+- **Uploads are deleted when their session ends.** `session_ttl_seconds` promised an hour, but
+  nothing called the purge functions and the session map is lost on every restart, so uploads
+  stayed forever. `storage.purge_expired_uploads` sweeps visitor uploads older than the TTL by
+  the database's clock, at startup and every ten minutes. The global corpus and named sessions
+  are kept.
 
 ## [2.0.1] - 2026-09-12
 

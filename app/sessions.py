@@ -65,7 +65,9 @@ def daily_cap_reached() -> bool:
 
 
 def purge_expired() -> list[str]:
-    """Return session_ids whose TTL elapsed (caller deletes their data)."""
+    """Forget sessions whose TTL elapsed and return their ids, so the map cannot grow without
+    bound. Their uploads are swept by storage.purge_expired_uploads, which reads the database
+    and so also covers sessions a restart forgot."""
     now = time.time()
     ttl = settings.session_ttl_seconds
     expired = [sid for sid, seen in _sessions.items() if now - seen > ttl]

@@ -109,3 +109,39 @@ def test_seeding_a_pack_cites_units_and_reseeding_replaces(db, demo_pack):
         assert len(docs) == 1 and docs[0]["chunk_count"] == again["docs"]["demo.shankara.x"]["records"]
     finally:
         storage.purge_session("__demo_pack__")
+
+
+def test_uploads_past_the_session_ttl_are_purged_and_everything_else_is_kept(db):
+    """A visitor's upload does not outlive its session cookie: once it is older than the TTL it
+    is deleted, chunks included. A fresh upload, the global corpus and named (non-cookie)
+    sessions, such as a pack seeded locally, are left alone."""
+    import uuid
+
+    from app import storage
+    from app.ingestion.embedder import get_embedder
+
+    old_sid, new_sid = uuid.uuid4().hex, uuid.uuid4().hex
+    emb = get_embedder().embed(["zzttlprobe"])[0]
+    storage.add_document(old_sid, "test:ttl:old", "old.txt", 1, [(1, 0, "zzttlprobe old upload", emb)])
+    storage.add_document(new_sid, "test:ttl:new", "new.txt", 1, [(1, 0, "zzttlprobe new upload", emb)])
+    storage.add_document("__ttl_named__", "test:ttl:named", "named.txt", 1, [(1, 0, "zzttlprobe named session", emb)])
+    try:
+        with storage._connect() as conn:
+            conn.execute(
+                "UPDATE documents SET uploaded_at = now() - interval '2 hours' WHERE doc_id IN (%s, %s)",
+                ("test:ttl:old", "test:ttl:named"),
+            )
+        assert storage.purge_expired_uploads(3600) >= 1
+
+        def texts(sid: str) -> set[str]:
+            hits, _ = storage.hybrid_search(sid, emb, "zzttlprobe", limit=10)
+            return {h.text for h in hits}
+
+        assert "zzttlprobe old upload" not in texts(old_sid)  # the chunks are gone, not just the row
+        assert "old.txt" not in {d["file_name"] for d in storage.list_documents(old_sid)}
+        assert "zzttlprobe new upload" in texts(new_sid)  # still inside its TTL
+        assert "zzttlprobe named session" in texts("__ttl_named__")  # not a cookie session
+        assert "sample.txt" in {d["file_name"] for d in storage.list_documents(old_sid)}  # the global corpus
+    finally:
+        for sid in (old_sid, new_sid, "__ttl_named__"):
+            storage.purge_session(sid)

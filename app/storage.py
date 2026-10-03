@@ -237,3 +237,23 @@ def purge_session(session_id: str) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM chunks WHERE session_id = %s", (session_id,))
         conn.execute("DELETE FROM documents WHERE session_id = %s", (session_id,))
+
+
+def purge_expired_uploads(ttl_seconds: int) -> int:
+    """Delete visitor uploads older than the session TTL. Returns the number of documents removed.
+
+    A session cookie lives ttl_seconds from its creation and an upload cannot predate its
+    session, so an upload older than the TTL belongs to a session that has already expired.
+    The sweep reads the database rather than the in-memory session map, so it also clears
+    uploads whose sessions a restart forgot. Only cookie sessions (32-character hex ids) are
+    swept: the global corpus and named sessions, such as a pack seeded locally, are kept."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "DELETE FROM documents WHERE session_id ~ '^[0-9a-f]{32}$' "
+            "AND uploaded_at < now() - make_interval(secs => %s) RETURNING doc_id",
+            (ttl_seconds,),
+        ).fetchall()
+        doc_ids = [r[0] for r in rows]
+        if doc_ids:
+            conn.execute("DELETE FROM chunks WHERE doc_id = ANY(%s)", (doc_ids,))
+    return len(doc_ids)
