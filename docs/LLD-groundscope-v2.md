@@ -20,7 +20,7 @@ mcp = FastMCP("groundscope-retrieval")
 
 @mcp.tool()
 def hybrid_search(session_id: str, query: str, limit: int = 6) -> str:
-    """Hybrid (pgvector + BM25, RRF) retrieval over a session's docs + GLOBAL corpus.
+    """Hybrid (pgvector + Postgres full-text, RRF) retrieval over a session's docs + GLOBAL corpus.
     Returns JSON: {summary, score, sources:[{kind,label,detail,text}]}."""
     emb = get_embedder().embed([query])[0]
     hits, best = storage.hybrid_search(session_id, emb, query, limit=limit)
@@ -243,7 +243,7 @@ jobs:
 ---
 
 ## 10. Storage deltas (`storage.py`)
-- Core schema unchanged (`chunks`, `documents`, pgvector `<=>`, BM25 `tsvector` + RRF in
+- Core schema unchanged (`chunks`, `documents`, pgvector `<=>`, full-text `tsvector` + RRF in
   `hybrid_search`).
 - **RLS (multi-tenancy):** enable row-level security on `chunks`/`documents`, policy
   `session_id = current_setting('app.tenant')`; the node sets `app.tenant` per request.

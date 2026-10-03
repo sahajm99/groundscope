@@ -44,7 +44,7 @@ def _embed(query: str) -> list[float]:
 async def hybrid_search(
     session_id: str, query: str, limit: int = 6, query_embedding: list[float] | None = None
 ) -> str:
-    """Hybrid (pgvector + BM25, RRF-fused) search over the session's documents plus the
+    """Hybrid (pgvector + Postgres full-text, RRF-fused) search over the session's documents plus the
     global corpus. Returns JSON {summary, score, sources:[{kind,label,detail,text}]};
     score is the best cosine distance (lower is closer)."""
     sid = _check_session(session_id)
@@ -56,7 +56,7 @@ async def hybrid_search(
         summary = "No matching chunks in the uploaded documents."
     else:
         dist = f"{best:.3f}" if best is not None else "n/a"
-        summary = (f"{len(hits)} chunks (vector+BM25, RRF-fused); best vector distance "
+        summary = (f"{len(hits)} chunks (vector+keyword, RRF-fused); best vector distance "
                    f"{dist} from {sources[0]['label']}.")
     return json.dumps({"summary": summary, "score": best, "sources": sources})
 

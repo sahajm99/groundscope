@@ -17,7 +17,7 @@ needs_pack_texts = pytest.mark.skipif(
 
 def test_keyword_leg_matches_on_any_term_not_all(db):
     """plainto_tsquery ANDs every word, so a long question with one unmatched word made the
-    BM25 leg return nothing and the fused ranking degrade to dense-only (found by the evals:
+    keyword leg return nothing and the fused ranking degrade to dense-only (found by the evals:
     Meridian facts were missed). Terms are ORed; rank still rewards more matches."""
     from app import storage
     from app.ingestion.embedder import get_embedder

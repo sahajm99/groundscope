@@ -345,7 +345,7 @@ async def retrieval_worker(state: W, writer: StreamWriter) -> dict:
     sid, sq, b = state["session_id"], state["subquery"], state["branch"]
     threshold = settings.relevance_distance_threshold
     _emit(writer, state, type="tool_call", tool="hybrid_search", input=sq[:200], branch=b,
-          summary="Searching your documents (vector + BM25) via MCP.")
+          summary="Searching your documents (vector + keyword) via MCP.")
     try:
         emb = await asyncio.to_thread(_embed, sq)
         res = await _call("hybrid_search", session_id=sid, query=sq, query_embedding=emb)

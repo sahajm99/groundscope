@@ -41,7 +41,7 @@ MCP tool bus (mcp.json → app/agent/mcp_registry.py → app/agent/toolbus.py)
   groundscope-web        web_search                      (keep-alive child)
   groundscope-utils      calculator, current_datetime    (per-call child)
         │
-Supabase Postgres + pgvector (+ BM25 tsvector, RRF fusion) · Groq (tiered router + circuit breaker) · LangSmith
+Supabase Postgres + pgvector (+ full-text tsvector ranked by ts_rank, RRF fusion) · Groq (tiered router + circuit breaker) · LangSmith
 ```
 
 Two rules the design keeps deterministic on purpose:

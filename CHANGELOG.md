@@ -44,6 +44,10 @@ roadmap milestones in `docs/v2-roadmap.md`.
   stayed forever. `storage.purge_expired_uploads` sweeps visitor uploads older than the TTL by
   the database's clock, at startup and every ten minutes. The global corpus and named sessions
   are kept.
+- **The keyword leg is called what it is.** The trace, the tool summaries, the README and the
+  design docs said BM25. The code ranks an OR'd `to_tsquery` with `ts_rank`, which is Postgres
+  full-text search without BM25's inverse document frequency or length saturation. Labels only;
+  the ranking is unchanged.
 
 ## [2.0.1] - 2026-09-12
 

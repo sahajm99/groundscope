@@ -31,7 +31,7 @@ class Source:
 
 @traceable(run_type="retriever", name="hybrid_search")
 def hybrid_search(session_id: str, query: str, limit: int = 6) -> tuple[str, list[Source], float | None]:
-    """Hybrid retrieval (dense pgvector + sparse BM25, RRF-fused) over this
+    """Hybrid retrieval (dense pgvector + sparse Postgres full-text, RRF-fused) over this
     session's docs + the global seeded corpus."""
     emb = get_embedder().embed([query])[0]
     hits, best = storage.hybrid_search(session_id, emb, query, limit=limit)
@@ -42,7 +42,7 @@ def hybrid_search(session_id: str, query: str, limit: int = 6) -> tuple[str, lis
         for h in hits
     ]
     dist = f"{best:.3f}" if best is not None else "n/a"
-    summary = f"{len(hits)} chunks (vector+BM25, RRF-fused); best vector distance {dist} from {hits[0].file_name} p.{hits[0].page_number}."
+    summary = f"{len(hits)} chunks (vector+keyword, RRF-fused); best vector distance {dist} from {hits[0].file_name} p.{hits[0].page_number}."
     return (summary, sources, best)
 
 

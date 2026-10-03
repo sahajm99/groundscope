@@ -73,7 +73,8 @@ def init_schema() -> None:
         )
         conn.execute("CREATE INDEX IF NOT EXISTS chunks_session_idx ON chunks (session_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS docs_session_idx ON documents (session_id)")
-        # Full-text (BM25-style) column for hybrid retrieval — generated + backfilled.
+        # Full-text column for the keyword leg of hybrid retrieval — generated + backfilled.
+        # Ranked with ts_rank, which is not BM25: no inverse document frequency, no length saturation.
         conn.execute(
             "ALTER TABLE chunks ADD COLUMN IF NOT EXISTS ts tsvector "
             "GENERATED ALWAYS AS (to_tsvector('english', text)) STORED"
@@ -163,7 +164,7 @@ def _or_tsquery(query_text: str) -> str:
 def hybrid_search(
     session_id: str, query_embedding: list[float], query_text: str, limit: int = 6
 ) -> tuple[list[Hit], float | None]:
-    """Hybrid retrieval: dense (pgvector cosine) + sparse (Postgres BM25/FTS),
+    """Hybrid retrieval: dense (pgvector cosine) + sparse (Postgres full-text, ts_rank),
     fused with Reciprocal Rank Fusion. Returns (fused hits, best vector distance).
     The best vector distance is the relevance-gate signal."""
     qv = _vec(query_embedding)

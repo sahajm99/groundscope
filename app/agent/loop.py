@@ -85,7 +85,7 @@ async def run_agent(session_id: str, question: str) -> AsyncIterator[dict]:
 
     # ── Node: hybrid_search (round 1) ─────────────────────────────
     t0 = time.monotonic()
-    yield trace(type="tool_call", tool="hybrid_search", input=question[:200], summary="Searching your documents (vector + BM25).")
+    yield trace(type="tool_call", tool="hybrid_search", input=question[:200], summary="Searching your documents (vector + keyword).")
     summary, sources, best = await asyncio.to_thread(tools.hybrid_search, session_id, question)
     collected.extend(sources)
     yield trace(type="tool_result", tool="hybrid_search", summary=summary, score=best, ms=_ms(t0),
