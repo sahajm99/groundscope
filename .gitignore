@@ -24,3 +24,9 @@ data/uploads/
 .ruff_cache/
 eval-report.json
 .gstack/
+
+# Corpus-pack texts and build output stay local: some editions are under copyright or carry a
+# no-repost notice (DECISIONS 33, 35), and this repository is public. The pack contract, the
+# manifest and the golden set are tracked. See data/packs/README.md, "Distribution".
+data/packs/*/texts/
+data/packs/*/build/

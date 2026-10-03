@@ -51,17 +51,29 @@ async def hybrid_search(
     limit = max(1, min(int(limit), MAX_LIMIT))
     emb = query_embedding if query_embedding else await run_sync(_embed, query)
     hits, best = await run_sync(storage.hybrid_search, sid, emb, query, limit)
-    sources = [
-        {"kind": "doc", "label": f"{h.file_name} p.{h.page_number}", "detail": f"p.{h.page_number}", "text": h.text}
-        for h in hits
-    ]
+    sources = [_source(h) for h in hits]
     if not hits:
         summary = "No matching chunks in the uploaded documents."
     else:
         dist = f"{best:.3f}" if best is not None else "n/a"
         summary = (f"{len(hits)} chunks (vector+BM25, RRF-fused); best vector distance "
-                   f"{dist} from {hits[0].file_name} p.{hits[0].page_number}.")
+                   f"{dist} from {sources[0]['label']}.")
     return json.dumps({"summary": summary, "score": best, "sources": sources})
+
+
+_META_KEYS = ("ref", "part", "layer", "language", "commentator", "translator", "text_id", "crossrefs")
+
+
+def _source(h: storage.Hit) -> dict:
+    """A plain upload cites 'file p.N'. A corpus-pack record cites its unit instead
+    ('Isha 2 · Commentary · Shankara, tr. Swami Gambhirananda') and carries its metadata."""
+    meta = h.metadata or {}
+    label = meta.get("citation") or f"{h.file_name} p.{h.page_number}"
+    detail = meta.get("ref") or f"p.{h.page_number}"
+    src: dict = {"kind": "doc", "label": label, "detail": detail, "text": h.text}
+    if meta:
+        src["meta"] = {k: meta[k] for k in _META_KEYS if meta.get(k)}
+    return src
 
 
 @mcp.tool()

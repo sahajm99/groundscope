@@ -61,3 +61,58 @@ def llm_keys() -> None:
         if _in_ci():
             pytest.fail("CI requires LLM_API_KEY (repository secret)")
         pytest.skip("LLM_API_KEY not set")
+
+
+DEMO_PACK_TEXT = """---
+pack: demo
+text_id: demo
+title: "A demo text"
+layer: bhashya
+commentator: Shankara
+translator: "Swami X"
+language: en
+---
+
+## Verse 1
+<!-- ref: demo.1 -->
+
+### Translation
+
+1. The lamp zzdemoprobe lights the room it stands in.
+
+### Commentary
+
+The lamp is the knower and the room is the known.
+
+## Verse 2
+<!-- ref: demo.2 -->
+
+### Translation
+
+2. The river reaches the sea and loses its name.
+"""
+
+
+DEMO_PACK_MANIFEST = """[pack]
+id = "demo"
+name = "Demo pack"
+seed_session = "__demo_pack__"
+
+[[texts]]
+id = "demo"
+title = "A demo text"
+cite_as = "Demo"
+files = ["texts/demo.shankara.x.md"]
+"""
+
+
+@pytest.fixture
+def demo_pack(tmp_path):
+    """A two-verse corpus pack written for the tests. The Vedanta pack's own texts are private
+    and not distributed with the repository, so this is what exercises the manifest -> records
+    -> toc -> seed path everywhere, CI included."""
+    pack = tmp_path / "demo"
+    (pack / "texts").mkdir(parents=True)
+    (pack / "texts" / "demo.shankara.x.md").write_text(DEMO_PACK_TEXT, encoding="utf-8")
+    (pack / "pack.toml").write_text(DEMO_PACK_MANIFEST, encoding="utf-8")
+    return pack

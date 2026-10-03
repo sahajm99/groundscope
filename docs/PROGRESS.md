@@ -142,3 +142,34 @@ Resumed sessions: read this, then `docs/DECISIONS.md` and `docs/BLOCKED.md`, the
   `reasoning_effort: low` for gpt-oss on both clients (Groq accepts it: probe answered with
   24 completion tokens) and a retry-with-double-room-then-fail-over rule for empty
   completions. 110 tests.
+
+## 2026-09-25 — Corpus packs, Vedanta phase 1 (Isha Upanishad)
+
+- Decided to extend Groundscope into a domain-agnostic "golden image" pointed at swappable
+  corpus packs (`data/packs/`), starting with the user's Sanatana Dharma library. Phase 1 is the
+  conversion of one text into a machine-readable, searchable object; the agent tools, UI and
+  NotebookLM-style features are later phases.
+- Document contract written (`data/packs/README.md`): one canonical Markdown per source
+  edition, front matter for provenance, `## Unit` + `<!-- ref -->`, `### Part` blocks
+  (Mantra, Introduction, Translation, Commentary, Notes), footnotes per unit.
+- Isha Upanishad converted into four canonical files: mantras (Devanagari from
+  sanskritdocuments.org, cross-checked with Wikisource; IAST generated), Shankara's bhashya in
+  Sanskrit (segmented by script: mantra / avataranika / bhashya / epilogue), Gambhirananda's
+  English (from the re-typeset archive.org text layer, OCR fixed, diacritics restored, 16
+  footnotes read back from page images of the older scan because the text layer had dropped
+  them), and Aurobindo's translation with his 14 notes.
+- `app/ingestion/canonical.py` (parser, chunker, cross-reference normaliser, TOC),
+  `scripts/build_pack.py`, `scripts/seed_pack.py`; `chunks.metadata jsonb`; `Hit.metadata`;
+  retrieval tool cites pack units by label. 170 records, 12.4K words; 20-question golden set
+  in the pack. 125 tests pass (13 new parser tests, 2 new integration tests); ruff clean.
+- Seeded into the local pgvector as GLOBAL; the user's own question ("can one who wants the
+  fruits of action pursue brahma jnana?") retrieves Isha 9 Introduction and the Epilogue of
+  Shankara's commentary as the top two hits.
+- Not done (phase 2+): structural tools (`get_toc`, `get_verse`, commentator filter), Claude as
+  the model, per-pack synth prompt and web-fallback switch, UI source/citation panel, the
+  eval gate over the pack golden set. Nothing committed yet; changes are in the working tree.
+
+- Committed 2026-10-03 on top of the LangGraph 1.2 merge, without the texts: the repository is
+  public, so `data/packs/*/texts/` and `build/` are gitignored and the four Isha files stay local
+  (DECISIONS 35). The build produces 170 records from them. In CI the real-text tests skip and a
+  synthetic two-verse pack covers the manifest, build, table of contents and seed path.
